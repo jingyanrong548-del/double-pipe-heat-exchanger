@@ -135,13 +135,30 @@ Q = m_hot × (h_hot,in - h_hot,out)
 
 基于对流传热关联式（Dittus-Boelter、Gnielinski 等）计算内管和环形空间的对流传热系数，然后计算总传热系数。
 
-## 部署到 Vercel
+## 部署到 GitHub & Vercel
 
-1. 将项目推送到 GitHub
-2. 在 Vercel 中导入项目
-3. Vercel 会自动检测配置并部署
+### 快速部署步骤
 
-确保 `vercel.json` 中的路由和缓存配置正确。
+1. **推送到 GitHub**
+   ```bash
+   git remote add origin https://github.com/YOUR_USERNAME/double-pipe-heat-exchanger.git
+   git branch -M main
+   git push -u origin main
+   ```
+
+2. **部署到 Vercel**
+   - 访问 [vercel.com](https://vercel.com)
+   - 使用 GitHub 账号登录
+   - 点击 "Add New..." → "Project"
+   - 选择您的仓库并导入
+   - Framework Preset 选择 **Vite**
+   - 点击 "Deploy"
+
+3. **访问应用**
+   - 部署完成后，Vercel 会提供 URL
+   - 例如：`https://double-pipe-heat-exchanger.vercel.app`
+
+详细部署说明请参考 [DEPLOYMENT.md](./DEPLOYMENT.md)
 
 ## 注意事项
 
