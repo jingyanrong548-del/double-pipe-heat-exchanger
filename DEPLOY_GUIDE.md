@@ -138,7 +138,7 @@ git remote set-url origin git@github.com:jingyanrong548-del/double-pipe-heat-exc
 
 ## 🔗 相关链接
 
-- **GitHub 仓库**：https://github.com/jingyanrong/double-pipe-heat-exchanger
+- **GitHub 仓库**：https://github.com/jingyanrong548-del/double-pipe-heat-exchanger
 - **Vercel Dashboard**：https://vercel.com/dashboard
 - **Vercel 文档**：https://vercel.com/docs
 
