@@ -25,8 +25,9 @@ export function getFormData() {
     coldFlowRate: parseFloat(document.getElementById('cold-flowrate').value),
     coldPressure: parseFloat(document.getElementById('cold-pressure').value) || 101.325,
     
-    innerDiameter: parseFloat(document.getElementById('inner-diameter').value),
-    outerDiameter: parseFloat(document.getElementById('outer-diameter').value),
+    // 尺寸输入使用 mm，这里统一转换为 m
+    innerDiameter: parseFloat(document.getElementById('inner-diameter').value) / 1000,
+    outerDiameter: parseFloat(document.getElementById('outer-diameter').value) / 1000,
     length: parseFloat(document.getElementById('length').value),
     flowType: document.getElementById('flow-type').value,
     
@@ -239,15 +240,22 @@ export async function performCalculation() {
     // 显示结果
     if (results.success) {
       showResults(results);
-      // 更新可视化
-      updateVisualization({
-        innerDiameter: formData.innerDiameter,
-        outerDiameter: formData.outerDiameter,
-        length: formData.length,
-        isTwisted: formData.isTwisted,
-        twistPitch: formData.twistPitch,
-        twistAngle: formData.twistAngle
-      });
+    // 更新可视化：在一张图上展示几何 + 温度 + 计算结果
+    updateVisualization({
+      innerDiameter: formData.innerDiameter,
+      outerDiameter: formData.outerDiameter,
+      length: formData.length,
+      isTwisted: formData.isTwisted,
+      twistPitch: formData.twistPitch,
+      twistAngle: formData.twistAngle,
+      hotTin: formData.hotTin,
+      hotTout: formData.hotTout,
+      coldTin: formData.coldTin,
+      coldTout: formData.coldTout,
+      heatTransferRate: results.heatTransferRate,
+      lmtd: results.lmtd,
+      overallHeatTransferCoefficient: results.overallHeatTransferCoefficient
+    });
     } else {
       showError(results.error || '计算失败，请检查输入参数');
     }
@@ -286,7 +294,7 @@ export function initializeUI() {
       } else {
         twistedParamsDiv.classList.add('hidden');
       }
-      // 更新可视化
+      // 更新可视化（仅几何和麻花管参数）
       const formData = getFormData();
       updateVisualization({
         innerDiameter: formData.innerDiameter || 0.02,

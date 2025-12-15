@@ -119,16 +119,16 @@
           </h2>
           <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">内管直径 (m)</label>
-              <input type="number" id="inner-diameter" step="0.001" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="0.02">
+              <label class="block text-sm font-medium text-gray-700 mb-2">内管直径 (mm)</label>
+              <input type="number" id="inner-diameter" step="0.1" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="20" value="20">
             </div>
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">外管直径 (m)</label>
-              <input type="number" id="outer-diameter" step="0.001" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="0.04">
+              <label class="block text-sm font-medium text-gray-700 mb-2">外管直径 (mm)</label>
+              <input type="number" id="outer-diameter" step="0.1" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="40" value="40">
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-2">管长 (m)</label>
-              <input type="number" id="length" step="0.1" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="5.0">
+              <input type="number" id="length" step="0.1" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="5.0" value="5.0">
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-2">流动方式</label>
@@ -162,21 +162,21 @@
           </div>
         </div>
 
-        <!-- 可视化区域 -->
+        <!-- 可视化区域：一张综合结构图 -->
         <div class="bg-white rounded-2xl shadow-lg p-6 mb-6">
-          <h2 class="text-2xl font-semibold text-gray-800 mb-4 flex items-center">
+          <h2 class="text-2xl font-semibold text-gray-800 mb-2 flex items-center">
             <span class="w-3 h-3 bg-indigo-500 rounded-full mr-2"></span>
-            换热器结构图
+            换热器结构与工况示意图
           </h2>
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div>
-              <h3 class="text-lg font-medium text-gray-700 mb-3 text-center">侧视图</h3>
-              <canvas id="side-view-canvas" class="w-full border border-gray-200 rounded-lg bg-gray-50" style="height: 500px;"></canvas>
-            </div>
-            <div>
-              <h3 class="text-lg font-medium text-gray-700 mb-3 text-center">前视图</h3>
-              <canvas id="front-view-canvas" class="w-full border border-gray-200 rounded-lg bg-gray-50" style="height: 500px;"></canvas>
-            </div>
+          <p class="text-sm text-gray-500 mb-4">
+            一张图同时展示几何尺寸（长度、内外径）、流动方向、进出口温度以及计算结果（Q、LMTD、U）。
+          </p>
+          <div class="w-full">
+            <canvas
+              id="side-view-canvas"
+              class="w-full border border-gray-200 rounded-lg bg-gray-50"
+              style="height: 500px;"
+            ></canvas>
           </div>
         </div>
 

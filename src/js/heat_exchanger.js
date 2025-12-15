@@ -15,22 +15,17 @@ import { getFluidProperties, getEnthalpy } from './coolprop_loader.js';
  * @returns {number} LMTD (°C)
  */
 export function calculateLMTD(tHotIn, tHotOut, tColdIn, tColdOut, flowType = 'counter') {
-  // 转换为开尔文
-  const T1 = tHotIn + 273.15;
-  const T2 = tHotOut + 273.15;
-  const t1 = tColdIn + 273.15;
-  const t2 = tColdOut + 273.15;
-
+  // 直接在摄氏度下计算温差（ΔT 在 °C 与 K 中数值相同）
   let deltaT1, deltaT2;
 
   if (flowType === 'counter') {
-    // 逆流
-    deltaT1 = T1 - t2; // 热流体入口与冷流体出口的温差
-    deltaT2 = T2 - t1; // 热流体出口与冷流体入口的温差
+    // 逆流：入口端温差 = Th,in - Tc,out，出口端温差 = Th,out - Tc,in
+    deltaT1 = tHotIn - tColdOut;
+    deltaT2 = tHotOut - tColdIn;
   } else {
-    // 并流
-    deltaT1 = T1 - t1; // 入口端温差
-    deltaT2 = T2 - t2; // 出口端温差
+    // 并流：入口端温差 = Th,in - Tc,in，出口端温差 = Th,out - Tc,out
+    deltaT1 = tHotIn - tColdIn;
+    deltaT2 = tHotOut - tColdOut;
   }
 
   // 检查有效性
@@ -38,15 +33,15 @@ export function calculateLMTD(tHotIn, tHotOut, tColdIn, tColdOut, flowType = 'co
     throw new Error('温差计算无效：确保热流体温度高于冷流体温度');
   }
 
+  // 两端温差几乎相等时，LMTD 退化为算术平均
   if (Math.abs(deltaT1 - deltaT2) < 1e-6) {
-    // 如果两个温差相等，返回算术平均值
-    return (deltaT1 + deltaT2) / 2 - 273.15;
+    return (deltaT1 + deltaT2) / 2;
   }
 
-  // LMTD 公式
+  // 标准 LMTD 公式
   const lmtd = (deltaT1 - deltaT2) / Math.log(deltaT1 / deltaT2);
   
-  return lmtd - 273.15; // 转换回摄氏度
+  return lmtd; // 单位：°C
 }
 
 /**
@@ -103,17 +98,23 @@ export function calculateConvectiveHeatTransferCoefficient(nu, thermalConductivi
  * @returns {number} 传热增强系数
  */
 export function calculateTwistedTubeEnhancementFactor(twistPitch, twistAngle, innerDiameter) {
-  // 基于经验公式：麻花管的传热增强系数
-  // 通常为 1.2 - 2.0 倍，取决于螺旋参数
-  const aspectRatio = twistPitch / innerDiameter;
-  const angleRad = twistAngle * Math.PI / 180;
-  
-  // 简化的增强系数计算
-  // 节距越小，角度越大，增强效果越明显
-  const pitchFactor = Math.max(0.5, Math.min(2.0, 1.0 / aspectRatio));
-  const angleFactor = 1 + (angleRad / Math.PI) * 0.5;
-  
-  return pitchFactor * angleFactor;
+  // 保守的麻花管传热增强系数模型
+  // 目标范围：E 大致在 1.0 ~ 1.7 之间
+  if (!twistPitch || !innerDiameter) return 1.0;
+
+  const aspectRatio = twistPitch / innerDiameter; // p / Di
+  const angleRad = (twistAngle * Math.PI) / 180;
+
+  // 节距越小（更紧），增强越明显，但限制在 0.8~1.3
+  const pitchFactor = Math.max(0.8, Math.min(1.3, 1.2 / aspectRatio));
+
+  // 角度在 0~90° 范围内映射到 1.0~1.3
+  const angleFactor = 1.0 + Math.max(0, Math.min(angleRad, Math.PI / 2)) / (Math.PI / 2) * 0.3;
+
+  const E = pitchFactor * angleFactor;
+
+  // 二次限制，保证不会过大或小于 1
+  return Math.min(1.8, Math.max(1.0, E));
 }
 
 /**
@@ -141,7 +142,7 @@ export function calculateTwistedTubeArea(innerDiameter, length, twistPitch, twis
 }
 
 /**
- * 计算套管换热器的总传热系数
+ * 计算套管换热器的总传热系数（直管基准，不含麻花管增强）
  * @param {Object} hotProps - 热流体的物性（在平均温度下）
  * @param {Object} coldProps - 冷流体的物性（在平均温度下）
  * @param {number} innerDiameter - 内管直径 (m)
@@ -149,22 +150,16 @@ export function calculateTwistedTubeArea(innerDiameter, length, twistPitch, twis
  * @param {number} hotFlowRate - 热流体质量流量 (kg/s)
  * @param {number} coldFlowRate - 冷流体质量流量 (kg/s)
  * @param {number} length - 管长 (m)
- * @param {boolean} isTwisted - 是否为麻花管
- * @param {number} twistPitch - 螺旋节距 (m)
- * @param {number} twistAngle - 螺旋角度 (°)
- * @returns {number} 总传热系数 (W/m²/K)
+ * @returns {number} 总传热系数基准值 (W/m²/K)
  */
-export async function calculateOverallHeatTransferCoefficient(
+export async function calculateOverallHeatTransferCoefficientBase(
   hotProps,
   coldProps,
   innerDiameter,
   outerDiameter,
   hotFlowRate,
   coldFlowRate,
-  length,
-  isTwisted = false,
-  twistPitch = 0.1,
-  twistAngle = 45
+  length
 ) {
   // 计算内管（热流体）的对流传热系数
   const innerArea = Math.PI * innerDiameter * length;
@@ -175,13 +170,7 @@ export async function calculateOverallHeatTransferCoefficient(
     innerDiameter,
     hotProps.viscosity
   );
-  let innerNu = calculateNusseltNumber(innerRe, hotProps.prandtl, false); // 热流体被冷却
-  
-  // 如果是麻花管，应用传热增强
-  if (isTwisted) {
-    const enhancementFactor = calculateTwistedTubeEnhancementFactor(twistPitch, twistAngle, innerDiameter);
-    innerNu *= enhancementFactor;
-  }
+  const innerNu = calculateNusseltNumber(innerRe, hotProps.prandtl, false); // 热流体被冷却
   
   const hi = calculateConvectiveHeatTransferCoefficient(
     innerNu,
@@ -212,9 +201,46 @@ export async function calculateOverallHeatTransferCoefficient(
   const areaRatio = innerArea / outerArea;
   
   // 简化计算：忽略管壁热阻
-  const U = 1 / (1 / (hi * areaRatio) + 1 / ho);
+  const U_base = 1 / (1 / (hi * areaRatio) + 1 / ho);
   
-  return U;
+  return U_base;
+}
+
+/**
+ * 计算套管换热器的总传热系数（含麻花管增强）
+ */
+export async function calculateOverallHeatTransferCoefficient(
+  hotProps,
+  coldProps,
+  innerDiameter,
+  outerDiameter,
+  hotFlowRate,
+  coldFlowRate,
+  length,
+  isTwisted = false,
+  twistPitch = 0.1,
+  twistAngle = 45
+) {
+  const U_base = await calculateOverallHeatTransferCoefficientBase(
+    hotProps,
+    coldProps,
+    innerDiameter,
+    outerDiameter,
+    hotFlowRate,
+    coldFlowRate,
+    length
+  );
+
+  if (!isTwisted) {
+    return U_base;
+  }
+
+  const E = calculateTwistedTubeEnhancementFactor(twistPitch, twistAngle, innerDiameter);
+
+  // 最终增强系数再做一次安全限制
+  const limitedE = Math.min(1.8, Math.max(1.0, E));
+
+  return U_base * limitedE;
 }
 
 /**
@@ -340,13 +366,19 @@ export async function calculateHeatExchanger(params) {
     // 4. 计算换热面积
     let A;
     if (isTwisted) {
-      // 麻花管使用实际面积
+      // 麻花管使用实际面积估算
       A = calculateTwistedTubeArea(innerDiameter, length, twistPitch, twistAngle);
     } else {
-      // 直管使用标准面积
+      // 直管使用基于 Q、LMTD、U 的面积
       A = calculateHeatTransferArea(Q, lmtd, U);
     }
     
+    // 基于 Q 和 LMTD 反算一个 U_check（用于 sanity check）
+    let U_check = null;
+    if (A > 0 && lmtd > 0) {
+      U_check = Q / (A * lmtd);
+    }
+
     // 计算增强系数（如果是麻花管）
     let enhancementFactor = 1.0;
     if (isTwisted) {
@@ -358,6 +390,7 @@ export async function calculateHeatExchanger(params) {
       lmtd: lmtd,
       overallHeatTransferCoefficient: U,
       heatTransferArea: A,
+      overallHeatTransferCoefficientCheck: U_check,
       isTwisted: isTwisted,
       enhancementFactor: enhancementFactor,
       success: true

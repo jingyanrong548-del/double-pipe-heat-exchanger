@@ -15,7 +15,15 @@ export function drawSideView(canvas, params) {
     length = 5.0,
     isTwisted = false,
     twistPitch = 0.1,
-    twistAngle = 45
+    twistAngle = 45,
+    // 温度与计算结果（可选，用于在一张图上展示关键信息）
+    hotTin,
+    hotTout,
+    coldTin,
+    coldTout,
+    heatTransferRate,              // kW
+    lmtd,                          // °C
+    overallHeatTransferCoefficient // W/m²·K
   } = params;
 
   const ctx = canvas.getContext('2d');
@@ -31,7 +39,8 @@ export function drawSideView(canvas, params) {
   const diameterScale = height / (outerDiameter * 3); // 直径方向放大3倍以便看清
   const scale = Math.min(lengthScale, diameterScale);
   
-  const centerY = height / 2;
+  // 将中心线稍微上移，让下方有空间放文字和参数
+  const centerY = height * 0.4;
   const startX = width * 0.05;
   const endX = width * 0.95;
   const drawLength = endX - startX;
@@ -158,7 +167,7 @@ export function drawSideView(canvas, params) {
     ctx.fillRect(startX, centerY - (innerDiameter / 2) * scale, drawLength, innerDiameter * scale);
   }
   
-  // 添加标签 - 增大字体
+  // 添加几何标签 - 增大字体
   ctx.fillStyle = '#374151';
   ctx.font = 'bold 14px sans-serif';
   ctx.fillText(`长度: ${length.toFixed(2)} m`, startX, height - 15);
@@ -173,6 +182,67 @@ export function drawSideView(canvas, params) {
     ctx.font = '12px sans-serif';
     ctx.fillText(`节距: ${twistPitch.toFixed(2)} m`, endX - 120, height - 35);
     ctx.fillText(`角度: ${twistAngle}°`, endX - 120, height - 55);
+  }
+
+  // 在同一张图上展示进出口温度与关键计算结果
+  const hasTemps =
+    typeof hotTin === 'number' &&
+    typeof hotTout === 'number' &&
+    typeof coldTin === 'number' &&
+    typeof coldTout === 'number';
+
+  if (hasTemps) {
+    ctx.save();
+    ctx.fillStyle = '#111827';
+    ctx.font = '13px sans-serif';
+
+    // 左端：入口温度
+    const leftX = startX + 5;
+    const topY = centerY - (outerDiameter / 2) * scale - 40;
+    const lineSpacing = 16;
+
+    ctx.fillText(`热流体入口 Th,in = ${hotTin.toFixed(1)} °C`, leftX, topY);
+    ctx.fillText(`冷流体入口 Tc,in = ${coldTin.toFixed(1)} °C`, leftX, topY + lineSpacing);
+
+    // 右端：出口温度
+    const rightX = endX - 5 - 160;
+    ctx.textAlign = 'left';
+    ctx.fillText(`热流体出口 Th,out = ${hotTout.toFixed(1)} °C`, rightX, topY);
+    ctx.fillText(`冷流体出口 Tc,out = ${coldTout.toFixed(1)} °C`, rightX, topY + lineSpacing);
+
+    ctx.restore();
+  }
+
+  // 底部：汇总热工参数
+  const hasResults =
+    typeof heatTransferRate === 'number' ||
+    typeof lmtd === 'number' ||
+    typeof overallHeatTransferCoefficient === 'number';
+
+  if (hasResults) {
+    ctx.save();
+    ctx.fillStyle = '#1f2937';
+    ctx.font = '13px sans-serif';
+
+    const infoX = startX;
+    const infoY = centerY + (outerDiameter / 2) * scale + 30;
+    const lineSpacing = 18;
+
+    if (typeof heatTransferRate === 'number') {
+      ctx.fillText(`传热量 Q ≈ ${heatTransferRate.toFixed(2)} kW`, infoX, infoY);
+    }
+    if (typeof lmtd === 'number') {
+      ctx.fillText(`对数平均温差 LMTD ≈ ${lmtd.toFixed(2)} °C`, infoX, infoY + lineSpacing);
+    }
+    if (typeof overallHeatTransferCoefficient === 'number') {
+      ctx.fillText(
+        `总传热系数 U ≈ ${overallHeatTransferCoefficient.toFixed(1)} W/m²·K`,
+        infoX,
+        infoY + lineSpacing * 2
+      );
+    }
+
+    ctx.restore();
   }
 }
 
@@ -284,24 +354,21 @@ export function drawFrontView(canvas, params) {
  */
 export function updateVisualization(params) {
   const sideCanvas = document.getElementById('side-view-canvas');
-  const frontCanvas = document.getElementById('front-view-canvas');
-  
-  if (!sideCanvas || !frontCanvas) return;
-  
+  if (!sideCanvas) return;
+
   // 设置 Canvas 尺寸
   const setCanvasSize = (canvas) => {
     const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * window.devicePixelRatio || 1;
-    canvas.height = rect.height * window.devicePixelRatio || 1;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = rect.width * dpr || 1;
+    canvas.height = rect.height * dpr || 1;
     const ctx = canvas.getContext('2d');
-    ctx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   };
-  
+
   setCanvasSize(sideCanvas);
-  setCanvasSize(frontCanvas);
-  
-  // 绘制
+
+  // 单张图：在侧视图上绘制几何、温度和计算结果
   drawSideView(sideCanvas, params);
-  drawFrontView(frontCanvas, params);
 }
 
