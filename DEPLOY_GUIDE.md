@@ -3,7 +3,7 @@
 ## 📋 前置检查清单
 
 - [x] Git 仓库已初始化
-- [x] GitHub 远程仓库已配置：`https://github.com/jingyanrong/double-pipe-heat-exchanger.git`
+- [x] GitHub 远程仓库已配置：`git@github.com:jingyanrong548-del/double-pipe-heat-exchanger.git`
 - [x] `vercel.json` 配置文件已存在
 - [x] `package.json` 包含构建脚本
 
@@ -41,7 +41,7 @@ chmod +x deploy.sh
 2. **登录/注册**：使用 GitHub 账号登录
 3. **导入项目**：
    - 点击 "Add New..." → "Project"
-   - 选择 `jingyanrong/double-pipe-heat-exchanger` 仓库
+   - 选择 `jingyanrong548-del/double-pipe-heat-exchanger` 仓库
    - 点击 "Import"
 4. **配置项目**：
    - **Framework Preset**: Vite
@@ -87,7 +87,7 @@ vercel --prod
 ## ✅ 验证部署
 
 ### GitHub 验证
-- 访问：https://github.com/jingyanrong/double-pipe-heat-exchanger
+- 访问：https://github.com/jingyanrong548-del/double-pipe-heat-exchanger
 - 确认最新提交已推送
 
 ### Vercel 验证
@@ -104,8 +104,11 @@ vercel --prod
 # 检查远程仓库配置
 git remote -v
 
-# 如果未配置，添加远程仓库
-git remote add origin https://github.com/jingyanrong/double-pipe-heat-exchanger.git
+# 如果未配置，添加远程仓库（SSH 方式）
+git remote add origin git@github.com:jingyanrong548-del/double-pipe-heat-exchanger.git
+
+# 或者如果当前是 HTTPS，切换为 SSH
+git remote set-url origin git@github.com:jingyanrong548-del/double-pipe-heat-exchanger.git
 ```
 
 ### 2. Vercel 构建失败

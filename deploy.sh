@@ -25,8 +25,15 @@ fi
 if ! git remote | grep -q "^origin$"; then
   echo "❌ 未找到远程仓库 'origin'"
   echo "请先配置远程仓库："
-  echo "  git remote add origin https://github.com/jingyanrong/double-pipe-heat-exchanger.git"
+  echo "  git remote add origin git@github.com:jingyanrong548-del/double-pipe-heat-exchanger.git"
   exit 1
+fi
+
+# 确保使用 SSH 方式（如果当前是 HTTPS，自动切换）
+CURRENT_URL=$(git remote get-url origin 2>/dev/null || echo "")
+if [[ "$CURRENT_URL" == https://* ]]; then
+  echo "🔄 检测到 HTTPS 地址，自动切换为 SSH..."
+  git remote set-url origin git@github.com:jingyanrong548-del/double-pipe-heat-exchanger.git
 fi
 
 echo "📤 推送到 GitHub..."
