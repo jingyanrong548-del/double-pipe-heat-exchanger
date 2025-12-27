@@ -9,260 +9,327 @@
 <body>
   <div id="app">
     <!-- 加载状态 -->
-    <div id="loading" class="fixed inset-0 bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center z-50">
+    <div id="loading" class="fixed inset-0 bg-white flex items-center justify-center z-50">
       <div class="text-center">
-        <div class="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-blue-600 mx-auto mb-4"></div>
-        <p class="text-gray-700 text-lg font-medium">正在加载 CoolProp...</p>
+        <div class="animate-spin rounded-full h-12 w-12 border-2 border-gray-300 border-t-blue-600 mx-auto mb-4"></div>
+        <p class="text-gray-600 text-base font-medium">正在加载 CoolProp...</p>
       </div>
     </div>
 
     <!-- 主应用容器 -->
-    <div id="main-app" class="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 py-8 px-4 hidden">
-      <div class="max-w-6xl mx-auto">
+    <div id="main-app" class="min-h-screen bg-gray-50 py-6 px-4 hidden">
+      <div class="max-w-7xl mx-auto">
         <!-- 标题区域 -->
-        <header class="text-center mb-8">
-          <h1 class="text-4xl font-bold text-gray-800 mb-2">套管换热器计算器</h1>
-          <p class="text-gray-600">Heat Exchanger Calculator</p>
+        <header class="mb-6">
+          <h1 class="text-3xl font-semibold text-gray-900 mb-1">套管换热器计算器</h1>
+          <p class="text-sm text-gray-500">Heat Exchanger Calculator</p>
           <!-- 示例案例按钮 -->
-          <div class="mt-4 flex justify-center gap-3 flex-wrap">
-            <button id="load-example-straight" class="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm font-medium">
-              加载示例：直管换热器
+          <div class="mt-3 flex gap-2">
+            <button id="load-example-straight" class="px-3 py-1.5 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-xs font-medium shadow-sm">
+              加载示例：直管
             </button>
-            <button id="load-example-twisted" class="px-4 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors text-sm font-medium">
-              加载示例：麻花管换热器
+            <button id="load-example-twisted" class="px-3 py-1.5 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-xs font-medium shadow-sm">
+              加载示例：麻花管
             </button>
           </div>
         </header>
 
-        <!-- 输入区域 -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          <!-- 热流体参数 -->
-          <div class="bg-white rounded-2xl shadow-lg p-6">
-            <h2 class="text-2xl font-semibold text-gray-800 mb-4 flex items-center">
-              <span class="w-3 h-3 bg-red-500 rounded-full mr-2"></span>
-              热流体参数
-            </h2>
-            <div class="space-y-4">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">工质</label>
-                <select id="hot-fluid" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white">
-                  <option value="Water">水 (Water)</option>
-                  <option value="R134a">R134a</option>
-                  <option value="R410A">R410A</option>
-                  <option value="Air">空气 (Air)</option>
-                  <option value="Ethanol">乙醇 (Ethanol)</option>
-                  <option value="Methanol">甲醇 (Methanol)</option>
-                </select>
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">入口温度 (°C)</label>
-                <input type="number" id="hot-tin" step="0.1" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="80" value="80">
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">出口温度 (°C)</label>
-                <input type="number" id="hot-tout" step="0.1" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="60" value="60">
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">质量流量 (kg/s)</label>
-                <input type="number" id="hot-flowrate" step="0.01" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="0.5" value="0.5">
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">压力 (kPa)</label>
-                <input type="number" id="hot-pressure" step="0.1" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="101.325" value="101.325">
-              </div>
-            </div>
-          </div>
-
-          <!-- 冷流体参数 -->
-          <div class="bg-white rounded-2xl shadow-lg p-6">
-            <h2 class="text-2xl font-semibold text-gray-800 mb-4 flex items-center">
-              <span class="w-3 h-3 bg-blue-500 rounded-full mr-2"></span>
-              冷流体参数
-            </h2>
-            <div class="space-y-4">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">工质</label>
-                <select id="cold-fluid" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white">
-                  <option value="Water">水 (Water)</option>
-                  <option value="R134a">R134a</option>
-                  <option value="R410A">R410A</option>
-                  <option value="Air">空气 (Air)</option>
-                  <option value="Ethanol">乙醇 (Ethanol)</option>
-                  <option value="Methanol">甲醇 (Methanol)</option>
-                </select>
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">入口温度 (°C)</label>
-                <input type="number" id="cold-tin" step="0.1" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="20" value="20">
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">出口温度 (°C)</label>
-                <input type="number" id="cold-tout" step="0.1" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="40" value="40">
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">质量流量 (kg/s)</label>
-                <input type="number" id="cold-flowrate" step="0.01" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="0.5" value="0.5">
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">压力 (kPa)</label>
-                <input type="number" id="cold-pressure" step="0.1" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="101.325" value="101.325">
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 换热器参数 -->
-        <div class="bg-white rounded-2xl shadow-lg p-6 mb-6">
-          <h2 class="text-2xl font-semibold text-gray-800 mb-4 flex items-center">
-            <span class="w-3 h-3 bg-green-500 rounded-full mr-2"></span>
-            换热器参数
-          </h2>
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">内管直径 (mm)</label>
-              <input type="number" id="inner-diameter" step="0.1" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="20" value="20">
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">外管直径 (mm)</label>
-              <input type="number" id="outer-diameter" step="0.1" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="40" value="40">
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">管长 (m)</label>
-              <input type="number" id="length" step="0.1" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="5.0" value="5.0">
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">流动方式</label>
-              <select id="flow-type" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white">
-                <option value="counter">逆流 (Counter Flow)</option>
-                <option value="parallel">并流 (Parallel Flow)</option>
-              </select>
-            </div>
-          </div>
-          <div class="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">内管数量</label>
-              <select id="inner-tube-count" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white">
-                <option value="1" selected>1 根</option>
-                <option value="2">2 根</option>
-                <option value="3">3 根</option>
-                <option value="4">4 根</option>
-                <option value="5">5 根</option>
-                <option value="6">6 根</option>
-                <option value="7">7 根</option>
-                <option value="8">8 根</option>
-                <option value="9">9 根</option>
-                <option value="10">10 根</option>
-              </select>
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">内管类型</label>
-              <select id="inner-tube-type" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white">
-                <option value="smooth">光管 (Smooth Tube)</option>
-                <option value="twisted">麻花管 (Twisted Tube)</option>
-              </select>
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">流程数量</label>
-              <select id="pass-count" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white">
-                <option value="1" selected>1 个流程</option>
-                <option value="2">2 个流程</option>
-                <option value="3">3 个流程</option>
-                <option value="4">4 个流程</option>
-                <option value="5">5 个流程</option>
-                <option value="6">6 个流程</option>
-              </select>
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">每流程外管数量</label>
-              <select id="outer-tube-count-per-pass" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white">
-                <option value="1" selected>1 根</option>
-                <option value="2">2 根</option>
-                <option value="3">3 根</option>
-                <option value="4">4 根</option>
-                <option value="5">5 根</option>
-                <option value="6">6 根</option>
-                <option value="7">7 根</option>
-                <option value="8">8 根</option>
-                <option value="9">9 根</option>
-                <option value="10">10 根</option>
-              </select>
-            </div>
-          </div>
-          <div class="mt-4">
-            <label class="block text-sm font-medium text-gray-700 mb-2">传热系数 (W/m²·K) <span class="text-gray-500 text-xs">(可选，留空则自动计算)</span></label>
-            <input type="number" id="heat-transfer-coefficient" step="0.1" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="留空自动计算">
-          </div>
-          
-          <!-- 麻花管参数 -->
-          <div id="twisted-tube-params" class="mt-6 pt-6 border-t border-gray-200 hidden">
-            <h3 class="text-lg font-semibold text-gray-800 mb-4">麻花管参数</h3>
+        <!-- 主内容区域：左右分栏 -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <!-- 左侧：输入区域 -->
+          <div class="lg:col-span-2 space-y-6">
+            <!-- 流体参数 -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">螺旋节距 (m) <span class="text-gray-500 text-xs">(一个完整螺旋的长度)</span></label>
-                <input type="number" id="twist-pitch" step="0.01" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="0.1" value="0.1">
+              <!-- 热流体参数 -->
+              <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+                <h2 class="text-lg font-semibold text-gray-900 mb-4">热流体参数</h2>
+                <div class="space-y-3">
+                  <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">工质</label>
+                    <select id="hot-fluid" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all">
+                      <option value="Water">水 (Water)</option>
+                      <option value="R134a">R134a</option>
+                      <option value="R410A">R410A</option>
+                      <option value="Air">空气 (Air)</option>
+                      <option value="Ethanol">乙醇 (Ethanol)</option>
+                      <option value="Methanol">甲醇 (Methanol)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">入口温度 (°C)</label>
+                    <input type="number" id="hot-tin" step="0.1" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="80" value="80">
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">出口温度 (°C)</label>
+                    <input type="number" id="hot-tout" step="0.1" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="60" value="60">
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">质量流量 (kg/s)</label>
+                    <input type="number" id="hot-flowrate" step="0.01" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="0.5" value="0.5">
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">压力 (kPa)</label>
+                    <input type="number" id="hot-pressure" step="0.1" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="101.325" value="101.325">
+                  </div>
+                </div>
               </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">螺旋角度 (°) <span class="text-gray-500 text-xs">(扭曲角度，通常 30-60°)</span></label>
-                <input type="number" id="twist-angle" step="1" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="45" value="45">
+
+              <!-- 冷流体参数 -->
+              <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+                <h2 class="text-lg font-semibold text-gray-900 mb-4">冷流体参数</h2>
+                <div class="space-y-3">
+                  <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">工质</label>
+                    <select id="cold-fluid" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all">
+                      <option value="Water">水 (Water)</option>
+                      <option value="R134a">R134a</option>
+                      <option value="R410A">R410A</option>
+                      <option value="Air">空气 (Air)</option>
+                      <option value="Ethanol">乙醇 (Ethanol)</option>
+                      <option value="Methanol">甲醇 (Methanol)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">入口温度 (°C)</label>
+                    <input type="number" id="cold-tin" step="0.1" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="20" value="20">
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">出口温度 (°C)</label>
+                    <input type="number" id="cold-tout" step="0.1" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="40" value="40">
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">质量流量 (kg/s)</label>
+                    <input type="number" id="cold-flowrate" step="0.01" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="0.5" value="0.5">
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">压力 (kPa)</label>
+                    <input type="number" id="cold-pressure" step="0.1" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="101.325" value="101.325">
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 换热器参数 -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <h2 class="text-lg font-semibold text-gray-900 mb-5">换热器参数</h2>
+              
+              <!-- 内管类型选择 -->
+              <div class="mb-5 p-4 bg-blue-50 rounded-lg border border-blue-100">
+                <label class="block text-sm font-semibold text-gray-900 mb-2">
+                  <span class="text-red-500">*</span> 内管类型选择
+                </label>
+                <select id="inner-tube-type" class="w-full md:w-1/2 px-4 py-2.5 text-sm rounded-lg border border-blue-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white font-medium transition-all">
+                  <option value="smooth">光管 (Smooth Tube)</option>
+                  <option value="twisted">麻花管 (Twisted Tube)</option>
+                </select>
+                <p class="mt-2 text-xs text-gray-600">选择内管类型后，将显示对应的输入参数</p>
+              </div>
+              
+              <!-- 外管参数 -->
+              <div class="mb-5">
+                <h3 class="text-sm font-semibold text-gray-900 mb-3">外管参数</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">外管外径 (mm)<span class="text-red-500">*</span></label>
+                    <input type="number" id="outer-outer-diameter" step="0.1" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="40" value="40">
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">外管壁厚 (mm)<span class="text-red-500">*</span></label>
+                    <input type="number" id="outer-wall-thickness" step="0.1" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="2.0" value="2.0">
+                  </div>
+                </div>
+                <div class="mt-2 text-xs text-gray-500">外管内径 = 外管外径 - 2×外管壁厚</div>
+              </div>
+              
+              <!-- 光管参数区域 -->
+              <div id="smooth-tube-params" class="mb-5">
+                <h3 class="text-sm font-semibold text-gray-900 mb-3">光管参数</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">内管外径 (mm)<span class="text-red-500">*</span></label>
+                    <input type="number" id="inner-outer-diameter" step="0.1" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="20" value="20">
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">内管壁厚 (mm)<span class="text-red-500">*</span></label>
+                    <input type="number" id="inner-wall-thickness" step="0.1" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="2.0" value="2.0">
+                  </div>
+                </div>
+                <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">内管数量</label>
+                    <select id="inner-tube-count" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all">
+                      <option value="1" selected>1 根</option>
+                      <option value="2">2 根</option>
+                      <option value="3">3 根</option>
+                      <option value="4">4 根</option>
+                      <option value="5">5 根</option>
+                      <option value="6">6 根</option>
+                      <option value="7">7 根</option>
+                      <option value="8">8 根</option>
+                      <option value="9">9 根</option>
+                      <option value="10">10 根</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="mt-2 text-xs text-gray-500">内管内径 = 内管外径 - 2×内管壁厚</div>
+              </div>
+              
+              <!-- 麻花管参数区域 -->
+              <div id="twisted-tube-params" class="mb-5 hidden">
+                <h3 class="text-sm font-semibold text-gray-900 mb-3">麻花管参数</h3>
+                <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
+                  <div class="text-xs text-amber-800">
+                    <span class="font-semibold">注意：</span>麻花管模式下，只支持单根内管，且麻花管外径自动等于外管内径（贴合状态）。
+                  </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">
+                      头数（瓣数）<span class="text-red-500">*</span>
+                    </label>
+                    <select id="twist-lobe-count" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all">
+                      <option value="3">3头</option>
+                      <option value="4" selected>4头</option>
+                      <option value="5">5头</option>
+                      <option value="6">6头</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">
+                      螺旋节距 (m)<span class="text-red-500">*</span>
+                    </label>
+                    <input type="number" id="twist-pitch" step="0.01" min="0.01" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="0.1" value="0.1">
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">
+                      麻花管壁厚 (mm)
+                    </label>
+                    <input type="number" id="twist-wall-thickness" step="0.1" min="0.1" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="使用外管壁厚">
+                  </div>
+                </div>
+                <div class="mt-3 p-3 bg-gray-50 rounded-lg">
+                  <h4 class="text-xs font-semibold text-gray-700 mb-2">计算后的几何参数</h4>
+                  <div class="grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <span class="text-gray-600">麻花管外径:</span>
+                      <span id="calc-twist-outer-diameter" class="font-semibold ml-1 text-blue-600">-</span> mm
+                    </div>
+                    <div>
+                      <span class="text-gray-600">麻花管内径:</span>
+                      <span id="calc-twist-inner-diameter" class="font-semibold ml-1 text-blue-600">-</span> mm
+                    </div>
+                    <div>
+                      <span class="text-gray-600">当量直径:</span>
+                      <span id="calc-twist-equivalent-diameter" class="font-semibold ml-1 text-green-600">-</span> mm
+                    </div>
+                    <div>
+                      <span class="text-gray-600">流通面积:</span>
+                      <span id="calc-twist-flow-area" class="font-semibold ml-1 text-green-600">-</span> m²
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- 通用参数 -->
+              <div class="mt-5 pt-5 border-t border-gray-200">
+                <h3 class="text-sm font-semibold text-gray-900 mb-3">通用参数</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">管长 (m)<span class="text-red-500">*</span></label>
+                    <input type="number" id="length" step="0.1" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="5.0" value="5.0">
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">流动方式<span class="text-red-500">*</span></label>
+                    <select id="flow-type" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all">
+                      <option value="counter">逆流 (Counter Flow)</option>
+                      <option value="parallel">并流 (Parallel Flow)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">流程数量</label>
+                    <select id="pass-count" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all">
+                      <option value="1" selected>1 个流程</option>
+                      <option value="2">2 个流程</option>
+                      <option value="3">3 个流程</option>
+                      <option value="4">4 个流程</option>
+                      <option value="5">5 个流程</option>
+                      <option value="6">6 个流程</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">每流程外管数量</label>
+                    <select id="outer-tube-count-per-pass" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all">
+                      <option value="1" selected>1 根</option>
+                      <option value="2">2 根</option>
+                      <option value="3">3 根</option>
+                      <option value="4">4 根</option>
+                      <option value="5">5 根</option>
+                      <option value="6">6 根</option>
+                      <option value="7">7 根</option>
+                      <option value="8">8 根</option>
+                      <option value="9">9 根</option>
+                      <option value="10">10 根</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="mt-5">
+                <label class="block text-xs font-medium text-gray-700 mb-1.5">传热系数 (W/m²·K) <span class="text-gray-500">(可选，留空则自动计算)</span></label>
+                <input type="number" id="heat-transfer-coefficient" step="0.1" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="留空自动计算">
+              </div>
+            </div>
+
+            <!-- 计算按钮 -->
+            <div class="flex justify-center">
+              <button id="calculate-btn" class="w-full md:w-auto px-8 py-3 bg-blue-600 text-white rounded-lg shadow-sm hover:bg-blue-700 transition-all duration-200 font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                计算
+              </button>
+            </div>
+
+            <!-- 结果展示区域 -->
+            <div id="results" class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 hidden">
+              <h2 class="text-lg font-semibold text-gray-900 mb-4">计算结果</h2>
+              <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div class="bg-blue-50 rounded-lg p-4 border border-blue-100">
+                  <div class="text-xs text-gray-600 mb-1">传热量</div>
+                  <div id="result-q" class="text-xl font-bold text-blue-700">-</div>
+                  <div class="text-xs text-gray-500 mt-1">kW</div>
+                </div>
+                <div class="bg-green-50 rounded-lg p-4 border border-green-100">
+                  <div class="text-xs text-gray-600 mb-1">对数平均温差</div>
+                  <div id="result-lmtd" class="text-xl font-bold text-green-700">-</div>
+                  <div class="text-xs text-gray-500 mt-1">°C</div>
+                </div>
+                <div class="bg-purple-50 rounded-lg p-4 border border-purple-100">
+                  <div class="text-xs text-gray-600 mb-1">传热系数</div>
+                  <div id="result-u" class="text-xl font-bold text-purple-700">-</div>
+                  <div class="text-xs text-gray-500 mt-1">W/m²·K</div>
+                </div>
+                <div class="bg-orange-50 rounded-lg p-4 border border-orange-100">
+                  <div class="text-xs text-gray-600 mb-1">换热面积</div>
+                  <div id="result-area" class="text-xl font-bold text-orange-700">-</div>
+                  <div class="text-xs text-gray-500 mt-1">m²</div>
+                </div>
+              </div>
+              <div id="error-message" class="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm hidden"></div>
+            </div>
+          </div>
+
+          <!-- 右侧：可视化区域 -->
+          <div class="lg:col-span-1">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 sticky top-6">
+              <h2 class="text-lg font-semibold text-gray-900 mb-3">截面图</h2>
+              <p class="text-xs text-gray-500 mb-4">显示单管截面图，包含主要尺寸标注</p>
+              <div class="w-full">
+                <canvas
+                  id="front-view-canvas"
+                  class="w-full border border-gray-200 rounded-lg bg-gray-50"
+                  style="aspect-ratio: 1;"
+                ></canvas>
               </div>
             </div>
           </div>
-        </div>
-
-        <!-- 可视化区域：单管截面图 -->
-        <div class="bg-white rounded-2xl shadow-lg p-6 mb-6">
-          <h2 class="text-2xl font-semibold text-gray-800 mb-2 flex items-center">
-            <span class="w-3 h-3 bg-indigo-500 rounded-full mr-2"></span>
-            换热器结构截面图
-          </h2>
-          <p class="text-sm text-gray-500 mb-4">
-            显示单管截面图，包含主要尺寸标注（内外径、内管数量等）。
-          </p>
-          <div class="w-full flex justify-center">
-            <canvas
-              id="front-view-canvas"
-              class="border border-gray-200 rounded-lg bg-gray-50"
-              style="width: 600px; height: 600px; max-width: 100%;"
-            ></canvas>
-          </div>
-        </div>
-
-        <!-- 计算按钮 -->
-        <div class="text-center mb-6">
-          <button id="calculate-btn" class="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-8 py-4 rounded-xl shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 font-semibold text-lg disabled:opacity-50 disabled:cursor-not-allowed">
-            计算
-          </button>
-        </div>
-
-        <!-- 结果展示区域 -->
-        <div id="results" class="bg-white rounded-2xl shadow-lg p-6 hidden">
-          <h2 class="text-2xl font-semibold text-gray-800 mb-4 flex items-center">
-            <span class="w-3 h-3 bg-purple-500 rounded-full mr-2"></span>
-            计算结果
-          </h2>
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div class="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4">
-              <div class="text-sm text-gray-600 mb-1">传热量</div>
-              <div id="result-q" class="text-2xl font-bold text-blue-700">-</div>
-              <div class="text-xs text-gray-500 mt-1">kW</div>
-            </div>
-            <div class="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-4">
-              <div class="text-sm text-gray-600 mb-1">对数平均温差</div>
-              <div id="result-lmtd" class="text-2xl font-bold text-green-700">-</div>
-              <div class="text-xs text-gray-500 mt-1">°C</div>
-            </div>
-            <div class="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-4">
-              <div class="text-sm text-gray-600 mb-1">传热系数</div>
-              <div id="result-u" class="text-2xl font-bold text-purple-700">-</div>
-              <div class="text-xs text-gray-500 mt-1">W/m²·K</div>
-            </div>
-            <div class="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-4">
-              <div class="text-sm text-gray-600 mb-1">换热面积</div>
-              <div id="result-area" class="text-2xl font-bold text-orange-700">-</div>
-              <div class="text-xs text-gray-500 mt-1">m²</div>
-            </div>
-          </div>
-          <div id="error-message" class="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 hidden"></div>
         </div>
       </div>
     </div>
@@ -270,4 +337,3 @@
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>
-

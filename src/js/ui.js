@@ -3,7 +3,7 @@
  * 处理表单验证、结果显示等界面交互
  */
 
-import { calculateHeatExchanger } from './heat_exchanger.js';
+import { calculateHeatExchanger, calculateLobeCrossSection } from './heat_exchanger.js';
 import { updateVisualization } from './visualization.js';
 import { loadExampleToForm, straightTubeExample, twistedTubeExample } from './examples.js';
 
@@ -26,8 +26,17 @@ export function getFormData() {
     coldPressure: parseFloat(document.getElementById('cold-pressure').value) || 101.325,
     
     // 尺寸输入使用 mm，这里统一转换为 m
-    innerDiameter: parseFloat(document.getElementById('inner-diameter').value) / 1000,
-    outerDiameter: parseFloat(document.getElementById('outer-diameter').value) / 1000,
+    // 获取外径和壁厚
+    innerOuterDiameter: parseFloat(document.getElementById('inner-outer-diameter').value) / 1000, // 内管外径 (m)
+    innerWallThickness: parseFloat(document.getElementById('inner-wall-thickness').value) / 1000, // 内管壁厚 (m)
+    outerOuterDiameter: parseFloat(document.getElementById('outer-outer-diameter').value) / 1000, // 外管外径 (m)
+    outerWallThickness: parseFloat(document.getElementById('outer-wall-thickness').value) / 1000, // 外管壁厚 (m)
+    // 计算内径（用于流速计算）
+    innerInnerDiameter: (parseFloat(document.getElementById('inner-outer-diameter').value) - 2 * parseFloat(document.getElementById('inner-wall-thickness').value)) / 1000, // 内管内径 (m)
+    outerInnerDiameter: (parseFloat(document.getElementById('outer-outer-diameter').value) - 2 * parseFloat(document.getElementById('outer-wall-thickness').value)) / 1000, // 外管内径 (m)
+    // 保留外径（用于传热面积计算，基于外径）
+    innerDiameter: parseFloat(document.getElementById('inner-outer-diameter').value) / 1000, // 内管外径，用于传热面积
+    outerDiameter: parseFloat(document.getElementById('outer-outer-diameter').value) / 1000, // 外管外径，用于传热面积
     length: parseFloat(document.getElementById('length').value),
     flowType: document.getElementById('flow-type').value,
     
@@ -39,8 +48,13 @@ export function getFormData() {
     innerTubeCount: parseInt(document.getElementById('inner-tube-count').value) || 1,
     innerTubeType: document.getElementById('inner-tube-type').value || 'smooth',
     isTwisted: document.getElementById('inner-tube-type').value === 'twisted',
-    twistPitch: parseFloat(document.getElementById('twist-pitch').value) || 0.1,
-    twistAngle: parseFloat(document.getElementById('twist-angle').value) || 45,
+    // 麻花管参数
+    twistLobeCount: parseInt(document.getElementById('twist-lobe-count')?.value) || 4,
+    twistPitch: parseFloat(document.getElementById('twist-pitch')?.value) || 0.1,
+    twistWallThickness: (() => {
+      const val = document.getElementById('twist-wall-thickness')?.value;
+      return val ? parseFloat(val) / 1000 : null; // 转换为m，null表示使用内管壁厚
+    })(),
     passCount: parseInt(document.getElementById('pass-count').value) || 1,
     outerTubeCountPerPass: parseInt(document.getElementById('outer-tube-count-per-pass').value) || 1
   };
@@ -79,20 +93,76 @@ export function validateFormData(data) {
   }
 
   // 验证换热器参数
-  if (isNaN(data.innerDiameter) || data.innerDiameter <= 0) errors.push('请输入有效的内管直径');
-  if (isNaN(data.outerDiameter) || data.outerDiameter <= 0) errors.push('请输入有效的外管直径');
-  if (data.outerDiameter <= data.innerDiameter) errors.push('外管直径必须大于内管直径');
+  // 验证外径
+  if (isNaN(data.innerOuterDiameter) || data.innerOuterDiameter <= 0) errors.push('请输入有效的内管外径');
+  if (isNaN(data.outerOuterDiameter) || data.outerOuterDiameter <= 0) errors.push('请输入有效的外管外径');
+  
+  // 验证壁厚
+  if (isNaN(data.innerWallThickness) || data.innerWallThickness <= 0) errors.push('请输入有效的内管壁厚');
+  if (isNaN(data.outerWallThickness) || data.outerWallThickness <= 0) errors.push('请输入有效的外管壁厚');
+  
+  // 验证壁厚不能大于外径的一半（否则内径会小于等于0）
+  if (data.innerWallThickness >= data.innerOuterDiameter / 2) {
+    errors.push('内管壁厚不能大于或等于内管外径的一半');
+  }
+  if (data.outerWallThickness >= data.outerOuterDiameter / 2) {
+    errors.push('外管壁厚不能大于或等于外管外径的一半');
+  }
+  
+  // 验证内径（计算后的）
+  if (isNaN(data.innerInnerDiameter) || data.innerInnerDiameter <= 0) {
+    errors.push('内管内径无效：内管外径必须大于2倍内管壁厚');
+  }
+  if (isNaN(data.outerInnerDiameter) || data.outerInnerDiameter <= 0) {
+    errors.push('外管内径无效：外管外径必须大于2倍外管壁厚');
+  }
+  
+  // 验证外管内径必须大于内管外径（确保内管能放入外管）
+  // 但麻花管模式下，外管内径等于麻花管外径（贴合状态）
+  if (!data.isTwisted && data.outerInnerDiameter <= data.innerOuterDiameter) {
+    errors.push('外管内径必须大于内管外径，否则内管无法放入外管');
+  }
+  
   if (isNaN(data.length) || data.length <= 0) errors.push('请输入有效的管长');
   
   // 验证内管数量
-  if (isNaN(data.innerTubeCount) || data.innerTubeCount < 1 || data.innerTubeCount > 10) {
-    errors.push('内管数量必须在 1-10 根之间');
-  }
-  
-  // 验证内管是否能放入外管（简单检查：所有内管直径之和应小于外管直径）
-  const totalInnerDiameter = data.innerTubeCount * data.innerDiameter;
-  if (totalInnerDiameter >= data.outerDiameter) {
-    errors.push(`内管数量过多：${data.innerTubeCount} 根内管无法放入外管中`);
+  if (data.isTwisted) {
+    // 麻花管模式下，内管数量必须为1
+    if (data.innerTubeCount !== 1) {
+      errors.push('麻花管模式下，内管数量必须为1根');
+    }
+  } else {
+    if (isNaN(data.innerTubeCount) || data.innerTubeCount < 1 || data.innerTubeCount > 10) {
+      errors.push('内管数量必须在 1-10 根之间');
+    }
+    
+    // 验证内管是否能放入外管（使用几何排列计算最小所需外管内径）
+    const innerDiameter = data.innerOuterDiameter;
+    const outerInnerDiameter = data.outerInnerDiameter;
+    const innerTubeCount = data.innerTubeCount;
+    
+    // 计算N根相同直径的管按圆形排列时所需的最小外管内径
+    let minRequiredOuterInnerDiameter;
+    if (innerTubeCount === 1) {
+      minRequiredOuterInnerDiameter = innerDiameter;
+    } else if (innerTubeCount === 2) {
+      // 两根管并排
+      minRequiredOuterInnerDiameter = innerDiameter * 2;
+    } else {
+      // 3根及以上按圆形排列，计算最小外接圆直径
+      // 对于N根管，每根管的中心到外接圆圆心的距离为：r = d / (2 * sin(π/N))
+      // 所以最小外接圆直径 = d + 2*r = d * (1 + 1/sin(π/N))
+      const angle = Math.PI / innerTubeCount;
+      const sinAngle = Math.sin(angle);
+      minRequiredOuterInnerDiameter = innerDiameter * (1 + 1 / sinAngle);
+    }
+    
+    // 考虑一些余量（比如5%的间隙）
+    const requiredDiameterWithMargin = minRequiredOuterInnerDiameter * 1.05;
+    
+    if (outerInnerDiameter < requiredDiameterWithMargin) {
+      errors.push(`内管数量过多：${innerTubeCount} 根内管（外径${(innerDiameter*1000).toFixed(1)}mm）需要最小外管内径${(requiredDiameterWithMargin*1000).toFixed(1)}mm，但当前外管内径为${(outerInnerDiameter*1000).toFixed(1)}mm`);
+    }
   }
 
   // 验证传热系数（如果提供）
@@ -102,11 +172,24 @@ export function validateFormData(data) {
 
   // 验证麻花管参数（如果启用）
   if (data.isTwisted) {
+    // 验证头数
+    if (isNaN(data.twistLobeCount) || data.twistLobeCount < 3 || data.twistLobeCount > 6) {
+      errors.push('麻花管头数必须在 3-6 之间');
+    }
+    
+    // 验证螺旋节距
     if (isNaN(data.twistPitch) || data.twistPitch <= 0) {
       errors.push('螺旋节距必须为有效正值');
     }
-    if (isNaN(data.twistAngle) || data.twistAngle <= 0 || data.twistAngle >= 90) {
-      errors.push('螺旋角度必须在 0-90° 之间');
+    
+    // 麻花管外径必须等于外管内径（贴合状态）
+    // 这里会在计算时自动处理，但可以添加一个警告
+    const twistWallThickness = data.twistWallThickness || data.innerWallThickness;
+    if (twistWallThickness > 0) {
+      const twistInnerDiameter = data.outerInnerDiameter - 2 * twistWallThickness;
+      if (twistInnerDiameter <= 0) {
+        errors.push('麻花管壁厚过大，导致内径小于等于0');
+      }
     }
   }
 
@@ -239,16 +322,28 @@ export async function performCalculation() {
       coldTout: formData.coldTout,
       coldFlowRate: formData.coldFlowRate,
       coldPressure: formData.coldPressure,
-      innerDiameter: formData.innerDiameter,
-      outerDiameter: formData.outerDiameter,
+      // 传热面积计算使用外径
+      innerDiameter: formData.innerDiameter, // 内管外径
+      outerDiameter: formData.outerDiameter, // 外管外径
+      // 流速计算使用内径
+      innerInnerDiameter: formData.innerInnerDiameter, // 内管内径
+      outerInnerDiameter: formData.outerInnerDiameter, // 外管内径
+      // 壁厚信息（用于可视化）
+      innerWallThickness: formData.innerWallThickness,
+      outerWallThickness: formData.outerWallThickness,
+      innerOuterDiameter: formData.innerOuterDiameter,
+      outerOuterDiameter: formData.outerOuterDiameter,
       length: formData.length,
       flowType: formData.flowType,
       givenU: formData.givenU,
       innerTubeCount: formData.innerTubeCount,
       innerTubeType: formData.innerTubeType,
       isTwisted: formData.isTwisted,
+      twistLobeCount: formData.twistLobeCount,
       twistPitch: formData.twistPitch,
-      twistAngle: formData.twistAngle
+      twistWallThickness: formData.twistWallThickness,
+      // 麻花管模式下，外径等于外管内径
+      twistOuterDiameter: formData.isTwisted ? formData.outerInnerDiameter : formData.innerOuterDiameter
     });
 
     // 恢复按钮状态
@@ -259,14 +354,22 @@ export async function performCalculation() {
       showResults(results);
     // 更新可视化：显示截面图
     updateVisualization({
-      innerDiameter: formData.innerDiameter,
-      outerDiameter: formData.outerDiameter,
+      innerDiameter: formData.innerOuterDiameter, // 用于显示
+      outerDiameter: formData.outerOuterDiameter, // 用于显示
+      innerInnerDiameter: formData.innerInnerDiameter,
+      outerInnerDiameter: formData.outerInnerDiameter,
+      innerWallThickness: formData.innerWallThickness,
+      outerWallThickness: formData.outerWallThickness,
+      innerOuterDiameter: formData.innerOuterDiameter,
+      outerOuterDiameter: formData.outerOuterDiameter,
       length: formData.length,
       innerTubeCount: formData.innerTubeCount,
       innerTubeType: formData.innerTubeType,
       isTwisted: formData.isTwisted,
+      twistLobeCount: formData.twistLobeCount,
       twistPitch: formData.twistPitch,
-      twistAngle: formData.twistAngle,
+      twistWallThickness: formData.twistWallThickness,
+      twistOuterDiameter: formData.isTwisted ? formData.outerInnerDiameter : formData.innerOuterDiameter,
       passCount: formData.passCount,
       outerTubeCountPerPass: formData.outerTubeCountPerPass
     });
@@ -278,6 +381,34 @@ export async function performCalculation() {
     setCalculateButtonState(true, '计算');
     showError(`计算失败: ${error.message}`);
   }
+}
+
+/**
+ * 获取可视化参数
+ * @param {Object} formData - 表单数据
+ * @returns {Object} 可视化参数
+ */
+function getVisualizationParams(formData) {
+  return {
+    innerDiameter: formData.innerOuterDiameter || formData.innerDiameter || 0.02,
+    outerDiameter: formData.outerOuterDiameter || formData.outerDiameter || 0.04,
+    innerInnerDiameter: formData.innerInnerDiameter,
+    outerInnerDiameter: formData.outerInnerDiameter,
+    innerWallThickness: formData.innerWallThickness,
+    outerWallThickness: formData.outerWallThickness,
+    innerOuterDiameter: formData.innerOuterDiameter,
+    outerOuterDiameter: formData.outerOuterDiameter,
+    length: formData.length || 5.0,
+    innerTubeCount: formData.innerTubeCount || 1,
+    innerTubeType: formData.innerTubeType || 'smooth',
+    isTwisted: formData.isTwisted,
+    twistLobeCount: formData.twistLobeCount || 4,
+    twistPitch: formData.twistPitch || 0.1,
+    twistWallThickness: formData.twistWallThickness,
+    twistOuterDiameter: formData.isTwisted ? formData.outerInnerDiameter : formData.innerOuterDiameter,
+    passCount: formData.passCount || 1,
+    outerTubeCountPerPass: formData.outerTubeCountPerPass || 1
+  };
 }
 
 /**
@@ -297,58 +428,105 @@ export function initializeUI() {
     }
   });
 
-  // 内管类型切换（显示/隐藏麻花管参数）
+  // 内管类型切换（显示/隐藏光管和麻花管参数）
   const innerTubeTypeSelect = document.getElementById('inner-tube-type');
+  const smoothParamsDiv = document.getElementById('smooth-tube-params');
   const twistedParamsDiv = document.getElementById('twisted-tube-params');
+  const innerTubeCountSelect = document.getElementById('inner-tube-count');
   
-  if (innerTubeTypeSelect && twistedParamsDiv) {
-    const updateTwistedParamsVisibility = () => {
-      if (innerTubeTypeSelect.value === 'twisted') {
-        twistedParamsDiv.classList.remove('hidden');
-      } else {
-        twistedParamsDiv.classList.add('hidden');
+  // 更新麻花管几何参数显示
+  const updateTwistedGeometryDisplay = () => {
+    const formData = getFormData();
+    if (formData.isTwisted) {
+      const twistOuterDiameter = formData.outerInnerDiameter; // 麻花管外径 = 外管内径
+      const twistWallThickness = formData.twistWallThickness || formData.outerWallThickness;
+      const twistInnerDiameter = twistOuterDiameter - 2 * twistWallThickness;
+      
+      // 更新显示
+      const calcOuterDiameterEl = document.getElementById('calc-twist-outer-diameter');
+      const calcInnerDiameterEl = document.getElementById('calc-twist-inner-diameter');
+      if (calcOuterDiameterEl) calcOuterDiameterEl.textContent = (twistOuterDiameter * 1000).toFixed(2);
+      if (calcInnerDiameterEl) calcInnerDiameterEl.textContent = (twistInnerDiameter * 1000).toFixed(2);
+      
+      // 计算当量直径和流通面积
+      try {
+        const lobeSection = calculateLobeCrossSection(twistOuterDiameter, twistInnerDiameter, formData.twistLobeCount || 4);
+        
+        const calcEquivalentDiameterEl = document.getElementById('calc-twist-equivalent-diameter');
+        const calcFlowAreaEl = document.getElementById('calc-twist-flow-area');
+        if (calcEquivalentDiameterEl) calcEquivalentDiameterEl.textContent = (lobeSection.equivalentDiameter * 1000).toFixed(2);
+        if (calcFlowAreaEl) calcFlowAreaEl.textContent = lobeSection.area.toFixed(6);
+      } catch (e) {
+        // 如果计算失败，暂时不显示
+        console.warn('无法更新麻花管几何参数:', e);
+      }
+    }
+  };
+  
+  if (innerTubeTypeSelect) {
+    const updateTubeTypeParamsVisibility = () => {
+      const isTwisted = innerTubeTypeSelect.value === 'twisted';
+      
+      // 显示/隐藏光管参数
+      if (smoothParamsDiv) {
+        if (isTwisted) {
+          smoothParamsDiv.classList.add('hidden');
+        } else {
+          smoothParamsDiv.classList.remove('hidden');
+        }
+      }
+      
+      // 显示/隐藏麻花管参数
+      if (twistedParamsDiv) {
+        if (isTwisted) {
+          twistedParamsDiv.classList.remove('hidden');
+          // 麻花管模式下，内管数量固定为1
+          if (innerTubeCountSelect) {
+            innerTubeCountSelect.value = '1';
+            innerTubeCountSelect.disabled = true;
+            innerTubeCountSelect.classList.add('opacity-50', 'cursor-not-allowed');
+          }
+          updateTwistedGeometryDisplay();
+        } else {
+          twistedParamsDiv.classList.add('hidden');
+          // 恢复内管数量选择
+          if (innerTubeCountSelect) {
+            innerTubeCountSelect.disabled = false;
+            innerTubeCountSelect.classList.remove('opacity-50', 'cursor-not-allowed');
+          }
+        }
       }
     };
     
     // 初始化显示状态（必须在事件监听器之前调用）
-    updateTwistedParamsVisibility();
+    updateTubeTypeParamsVisibility();
     
     innerTubeTypeSelect.addEventListener('change', () => {
-      updateTwistedParamsVisibility();
+      updateTubeTypeParamsVisibility();
       // 更新可视化
       const formData = getFormData();
-      updateVisualization({
-        innerDiameter: formData.innerDiameter || 0.02,
-        outerDiameter: formData.outerDiameter || 0.04,
-        length: formData.length || 5.0,
-        innerTubeCount: formData.innerTubeCount || 1,
-        innerTubeType: formData.innerTubeType || 'smooth',
-        isTwisted: formData.isTwisted,
-        twistPitch: formData.twistPitch || 0.1,
-        twistAngle: formData.twistAngle || 45,
-        passCount: formData.passCount || 1,
-        outerTubeCountPerPass: formData.outerTubeCountPerPass || 1
-      });
+      updateVisualization(getVisualizationParams(formData));
+    });
+    
+    // 监听相关参数变化，更新几何参数显示
+    const twistInputs = ['outer-outer-diameter', 'outer-wall-thickness', 'twist-wall-thickness', 'twist-lobe-count', 'twist-pitch'];
+    twistInputs.forEach(id => {
+      const input = document.getElementById(id);
+      if (input) {
+        input.addEventListener('input', () => {
+          if (innerTubeTypeSelect.value === 'twisted') {
+            updateTwistedGeometryDisplay();
+          }
+        });
+      }
     });
   }
   
   // 内管数量变化时更新可视化
-  const innerTubeCountSelect = document.getElementById('inner-tube-count');
   if (innerTubeCountSelect) {
     innerTubeCountSelect.addEventListener('change', () => {
       const formData = getFormData();
-      updateVisualization({
-        innerDiameter: formData.innerDiameter || 0.02,
-        outerDiameter: formData.outerDiameter || 0.04,
-        length: formData.length || 5.0,
-        innerTubeCount: formData.innerTubeCount || 1,
-        innerTubeType: formData.innerTubeType || 'smooth',
-        isTwisted: formData.isTwisted,
-        twistPitch: formData.twistPitch || 0.1,
-        twistAngle: formData.twistAngle || 45,
-        passCount: formData.passCount || 1,
-        outerTubeCountPerPass: formData.outerTubeCountPerPass || 1
-      });
+      updateVisualization(getVisualizationParams(formData));
     });
   }
   
@@ -358,18 +536,7 @@ export function initializeUI() {
   
   const updateVisualizationOnChange = () => {
     const formData = getFormData();
-    updateVisualization({
-      innerDiameter: formData.innerDiameter || 0.02,
-      outerDiameter: formData.outerDiameter || 0.04,
-      length: formData.length || 5.0,
-      innerTubeCount: formData.innerTubeCount || 1,
-      innerTubeType: formData.innerTubeType || 'smooth',
-      isTwisted: formData.isTwisted,
-      twistPitch: formData.twistPitch || 0.1,
-      twistAngle: formData.twistAngle || 45,
-      passCount: formData.passCount || 1,
-      outerTubeCountPerPass: formData.outerTubeCountPerPass || 1
-    });
+    updateVisualization(getVisualizationParams(formData));
   };
   
   if (passCountSelect) {
@@ -380,25 +547,14 @@ export function initializeUI() {
   }
 
   // 参数变化时更新可视化
-  const visualizationInputs = ['inner-diameter', 'outer-diameter', 'length', 'twist-pitch', 'twist-angle'];
+  const visualizationInputs = ['inner-outer-diameter', 'inner-wall-thickness', 'outer-outer-diameter', 'outer-wall-thickness', 'length', 'twist-pitch', 'twist-lobe-count', 'twist-wall-thickness'];
   visualizationInputs.forEach(id => {
     const input = document.getElementById(id);
     if (input) {
       input.addEventListener('input', () => {
         const formData = getFormData();
-        if (formData.innerDiameter && formData.outerDiameter && formData.length) {
-          updateVisualization({
-            innerDiameter: formData.innerDiameter,
-            outerDiameter: formData.outerDiameter,
-            length: formData.length,
-            innerTubeCount: formData.innerTubeCount || 1,
-            innerTubeType: formData.innerTubeType || 'smooth',
-            isTwisted: formData.isTwisted,
-            twistPitch: formData.twistPitch || 0.1,
-            twistAngle: formData.twistAngle || 45,
-            passCount: formData.passCount || 1,
-            outerTubeCountPerPass: formData.outerTubeCountPerPass || 1
-          });
+        if (formData.innerOuterDiameter && formData.outerOuterDiameter && formData.length) {
+          updateVisualization(getVisualizationParams(formData));
         }
       });
     }
@@ -424,12 +580,19 @@ export function initializeUI() {
   updateVisualization({
     innerDiameter: 0.02,
     outerDiameter: 0.04,
+    innerInnerDiameter: 0.016,
+    outerInnerDiameter: 0.036,
+    innerWallThickness: 0.002,
+    outerWallThickness: 0.002,
+    innerOuterDiameter: 0.02,
+    outerOuterDiameter: 0.04,
     length: 5.0,
     innerTubeCount: 1,
     innerTubeType: 'smooth',
     isTwisted: false,
+    twistLobeCount: 4,
     twistPitch: 0.1,
-    twistAngle: 45,
+    twistWallThickness: null,
     passCount: 1,
     outerTubeCountPerPass: 1
   });

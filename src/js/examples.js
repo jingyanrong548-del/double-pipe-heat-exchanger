@@ -149,14 +149,22 @@ export function loadExampleToForm(exampleData) {
   if (coldPressureInput) coldPressureInput.value = exampleData.coldPressure;
   
   // 换热器参数
-  const innerDiameterInput = document.getElementById('inner-diameter');
-  const outerDiameterInput = document.getElementById('outer-diameter');
+  const innerOuterDiameterInput = document.getElementById('inner-outer-diameter');
+  const innerWallThicknessInput = document.getElementById('inner-wall-thickness');
+  const outerOuterDiameterInput = document.getElementById('outer-outer-diameter');
+  const outerWallThicknessInput = document.getElementById('outer-wall-thickness');
   const lengthInput = document.getElementById('length');
   const flowTypeSelect = document.getElementById('flow-type');
   const heatTransferCoefficientInput = document.getElementById('heat-transfer-coefficient');
   
-  if (innerDiameterInput) innerDiameterInput.value = exampleData.innerDiameter * 1000; // 转换为mm
-  if (outerDiameterInput) outerDiameterInput.value = exampleData.outerDiameter * 1000; // 转换为mm
+  // 如果有示例数据中的壁厚信息，使用它；否则使用默认值（外径的10%）
+  const defaultInnerWallThickness = exampleData.innerWallThickness || (exampleData.innerDiameter * 0.1);
+  const defaultOuterWallThickness = exampleData.outerWallThickness || (exampleData.outerDiameter * 0.05);
+  
+  if (innerOuterDiameterInput) innerOuterDiameterInput.value = (exampleData.innerDiameter || exampleData.innerOuterDiameter) * 1000; // 转换为mm
+  if (innerWallThicknessInput) innerWallThicknessInput.value = defaultInnerWallThickness * 1000; // 转换为mm
+  if (outerOuterDiameterInput) outerOuterDiameterInput.value = (exampleData.outerDiameter || exampleData.outerOuterDiameter) * 1000; // 转换为mm
+  if (outerWallThicknessInput) outerWallThicknessInput.value = defaultOuterWallThickness * 1000; // 转换为mm
   if (lengthInput) lengthInput.value = exampleData.length;
   if (flowTypeSelect) flowTypeSelect.value = exampleData.flowType;
   if (heatTransferCoefficientInput) heatTransferCoefficientInput.value = exampleData.givenU || '';
@@ -208,16 +216,22 @@ export function loadExampleToForm(exampleData) {
   }
   
   // 触发 input 事件以更新可视化
-  [innerDiameterInput, outerDiameterInput, lengthInput, twistPitchInput, twistAngleInput].forEach(input => {
+  [innerOuterDiameterInput, innerWallThicknessInput, outerOuterDiameterInput, outerWallThicknessInput, lengthInput, twistPitchInput, twistAngleInput].forEach(input => {
     if (input) {
       input.dispatchEvent(new Event('input'));
     }
   });
   
-  // 更新可视化
-  updateVisualization({
-    innerDiameter: exampleData.innerDiameter,
-    outerDiameter: exampleData.outerDiameter,
+  // 更新可视化（使用表单数据）
+  const formData = {
+    innerOuterDiameter: (exampleData.innerDiameter || exampleData.innerOuterDiameter || 0.02),
+    innerWallThickness: defaultInnerWallThickness,
+    outerOuterDiameter: (exampleData.outerDiameter || exampleData.outerOuterDiameter || 0.04),
+    outerWallThickness: defaultOuterWallThickness,
+    innerInnerDiameter: (exampleData.innerDiameter || exampleData.innerOuterDiameter || 0.02) - 2 * defaultInnerWallThickness,
+    outerInnerDiameter: (exampleData.outerDiameter || exampleData.outerOuterDiameter || 0.04) - 2 * defaultOuterWallThickness,
+    innerDiameter: (exampleData.innerDiameter || exampleData.innerOuterDiameter || 0.02),
+    outerDiameter: (exampleData.outerDiameter || exampleData.outerOuterDiameter || 0.04),
     length: exampleData.length,
     innerTubeCount: exampleData.innerTubeCount || 1,
     innerTubeType: exampleData.innerTubeType || (exampleData.isTwisted ? 'twisted' : 'smooth'),
@@ -226,6 +240,25 @@ export function loadExampleToForm(exampleData) {
     twistAngle: exampleData.twistAngle || 45,
     passCount: exampleData.passCount || 1,
     outerTubeCountPerPass: exampleData.outerTubeCountPerPass || 1
+  };
+  
+  updateVisualization({
+    innerDiameter: formData.innerOuterDiameter,
+    outerDiameter: formData.outerOuterDiameter,
+    innerInnerDiameter: formData.innerInnerDiameter,
+    outerInnerDiameter: formData.outerInnerDiameter,
+    innerWallThickness: formData.innerWallThickness,
+    outerWallThickness: formData.outerWallThickness,
+    innerOuterDiameter: formData.innerOuterDiameter,
+    outerOuterDiameter: formData.outerOuterDiameter,
+    length: formData.length,
+    innerTubeCount: formData.innerTubeCount,
+    innerTubeType: formData.innerTubeType,
+    isTwisted: formData.isTwisted,
+    twistPitch: formData.twistPitch,
+    twistAngle: formData.twistAngle,
+    passCount: formData.passCount,
+    outerTubeCountPerPass: formData.outerTubeCountPerPass
   });
 }
 
