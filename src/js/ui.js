@@ -256,20 +256,108 @@ export function showResults(results) {
   if (uElement) uElement.textContent = formatNumber(results.overallHeatTransferCoefficient, 1);
   if (areaElement) areaElement.textContent = formatNumber(results.heatTransferArea, 3);
   
+  // 显示阻力损失结果
+  const innerPressureEl = document.getElementById('result-inner-pressure');
+  const annulusPressureEl = document.getElementById('result-annulus-pressure');
+  const innerFrictionEl = document.getElementById('result-inner-friction');
+  const annulusFrictionEl = document.getElementById('result-annulus-friction');
+
+  if (innerPressureEl && results.innerPressureDrop !== null && results.innerPressureDrop !== undefined) {
+    innerPressureEl.textContent = formatNumber(results.innerPressureDrop, 2);
+  }
+  if (annulusPressureEl && results.annulusPressureDrop !== null && results.annulusPressureDrop !== undefined) {
+    annulusPressureEl.textContent = formatNumber(results.annulusPressureDrop, 2);
+  }
+  if (innerFrictionEl && results.innerFrictionFactor !== null && results.innerFrictionFactor !== undefined) {
+    innerFrictionEl.textContent = formatNumber(results.innerFrictionFactor, 4);
+  }
+  if (annulusFrictionEl && results.annulusFrictionFactor !== null && results.annulusFrictionFactor !== undefined) {
+    annulusFrictionEl.textContent = formatNumber(results.annulusFrictionFactor, 4);
+  }
+  
+  // 显示面积余量结果
+  const requiredAreaEl = document.getElementById('result-required-area');
+  const areaMarginEl = document.getElementById('result-area-margin');
+  const areaMarginStatusEl = document.getElementById('result-area-margin-status');
+
+  if (requiredAreaEl && results.requiredArea !== null && results.requiredArea !== undefined) {
+    requiredAreaEl.textContent = formatNumber(results.requiredArea, 3);
+  }
+
+  if (areaMarginEl && results.areaMargin !== null && results.areaMargin !== undefined) {
+    areaMarginEl.textContent = formatNumber(results.areaMargin, 2) + '%';
+    
+    // 根据余量状态设置颜色
+    areaMarginEl.className = 'text-xl font-bold';
+    if (results.areaMarginStatus === 'insufficient') {
+      areaMarginEl.classList.add('text-red-700');
+      areaMarginEl.classList.remove('text-green-700', 'text-yellow-700');
+    } else if (results.areaMarginStatus === 'adequate') {
+      areaMarginEl.classList.add('text-green-700');
+      areaMarginEl.classList.remove('text-red-700', 'text-yellow-700');
+    } else if (results.areaMarginStatus === 'excessive') {
+      areaMarginEl.classList.add('text-yellow-700');
+      areaMarginEl.classList.remove('text-red-700', 'text-green-700');
+    }
+  }
+
+  // 显示余量状态提示
+  if (areaMarginStatusEl && results.areaMarginStatus && results.areaMarginStatus !== 'unknown') {
+    let statusText = '';
+    let statusClass = '';
+    let statusIcon = '';
+    
+    if (results.areaMarginStatus === 'insufficient') {
+      statusText = '余量不足（< 10%），建议增加换热面积或优化传热系数';
+      statusClass = 'bg-red-50 border-red-200 text-red-800';
+      statusIcon = '⚠️';
+    } else if (results.areaMarginStatus === 'adequate') {
+      statusText = '设计合理（10% ~ 25%）';
+      statusClass = 'bg-green-50 border-green-200 text-green-800';
+      statusIcon = '✓';
+    } else if (results.areaMarginStatus === 'excessive') {
+      statusText = '设计保守（> 25%），可考虑优化以降低成本';
+      statusClass = 'bg-yellow-50 border-yellow-200 text-yellow-800';
+      statusIcon = 'ℹ️';
+    }
+    
+    areaMarginStatusEl.className = `mt-3 p-3 rounded-lg border ${statusClass}`;
+    areaMarginStatusEl.innerHTML = `<span class="mr-2">${statusIcon}</span>${statusText}`;
+    areaMarginStatusEl.style.display = 'block';
+  } else if (areaMarginStatusEl) {
+    areaMarginStatusEl.style.display = 'none';
+  }
+  
   // 显示麻花管增强系数（如果适用）
   if (results.isTwisted && results.enhancementFactor) {
     const enhancementInfo = document.createElement('div');
     enhancementInfo.className = 'mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-xl';
-    enhancementInfo.innerHTML = `
+    
+    // 构建显示内容
+    let contentHTML = `
       <div class="flex items-center mb-2">
         <span class="text-yellow-600 text-lg mr-2">⚡</span>
         <span class="font-semibold text-yellow-800">麻花管传热增强</span>
       </div>
-      <div class="text-sm text-yellow-700">
-        传热增强系数: <span class="font-bold">${formatNumber(results.enhancementFactor, 2)}</span>
-        <span class="text-yellow-600 ml-2">(相比直管提升 ${formatNumber((results.enhancementFactor - 1) * 100, 1)}%)</span>
-      </div>
+      <div class="text-sm text-yellow-700 space-y-1">
+        <div>
+          传热增强系数: <span class="font-bold">${formatNumber(results.enhancementFactor, 2)}</span>
+          <span class="text-yellow-600 ml-2">(相比直管提升 ${formatNumber((results.enhancementFactor - 1) * 100, 1)}%)</span>
+        </div>
     `;
+    
+    // 如果存在翅化系数，显示翅化系数
+    if (results.finningRatio !== null && results.finningRatio !== undefined) {
+      contentHTML += `
+        <div>
+          翅化系数: <span class="font-bold">${formatNumber(results.finningRatio, 3)}</span>
+          <span class="text-yellow-600 ml-2">(麻花管面积/光管面积 = ${formatNumber(results.singleTubeArea, 3)} m² / ${formatNumber(results.smoothTubeArea, 3)} m²)</span>
+        </div>
+      `;
+    }
+    
+    contentHTML += `</div>`;
+    enhancementInfo.innerHTML = contentHTML;
     
     // 移除旧的增强信息（如果存在）
     const oldInfo = resultsDiv.querySelector('.bg-yellow-50');

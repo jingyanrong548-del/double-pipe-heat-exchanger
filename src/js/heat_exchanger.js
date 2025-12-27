@@ -442,6 +442,142 @@ export function calculateHeatTransferArea(heatTransferRate, lmtd, overallHeatTra
 }
 
 /**
+ * 计算湍流摩擦系数（Swamee-Jain公式）
+ * @param {number} re - 雷诺数
+ * @param {number} relativeRoughness - 相对粗糙度（ε/D）
+ * @returns {number} 摩擦系数
+ */
+function calculateTurbulentFrictionFactor(re, relativeRoughness) {
+  // Swamee-Jain 公式（显式，适用于 Re > 4000）
+  // f = 0.25 / [log10(ε/(3.7D) + 5.74/Re^0.9)]^2
+  const term = relativeRoughness / 3.7 + 5.74 / Math.pow(re, 0.9);
+  return 0.25 / Math.pow(Math.log10(term), 2);
+}
+
+/**
+ * 计算摩擦系数（Moody摩擦系数）
+ * @param {number} re - 雷诺数
+ * @param {number} relativeRoughness - 相对粗糙度（ε/D），光滑管默认0.0001
+ * @returns {number} 摩擦系数
+ */
+export function calculateFrictionFactor(re, relativeRoughness = 0.0001) {
+  if (re < 2300) {
+    // 层流：f = 64/Re
+    return 64 / re;
+  } else if (re < 3000) {
+    // 过渡流：使用插值
+    const laminarF = 64 / 2300;
+    const turbulentF = calculateTurbulentFrictionFactor(3000, relativeRoughness);
+    const ratio = (re - 2300) / 700;
+    return laminarF * (1 - ratio) + turbulentF * ratio;
+  } else {
+    // 湍流：使用 Swamee-Jain 公式（显式，避免迭代）
+    return calculateTurbulentFrictionFactor(re, relativeRoughness);
+  }
+}
+
+/**
+ * 计算管内摩擦阻力损失
+ * @param {number} density - 流体密度 (kg/m³)
+ * @param {number} velocity - 流速 (m/s)
+ * @param {number} length - 管长 (m)
+ * @param {number} diameter - 管径 (m) - 对于麻花管使用当量直径
+ * @param {number} re - 雷诺数
+ * @param {number} relativeRoughness - 相对粗糙度（可选，默认0.0001）
+ * @param {number} passCount - 流程数量（用于多流程）
+ * @returns {Object} {pressureDrop: 压降 (Pa), pressureDrop_kPa: 压降 (kPa), frictionFactor: 摩擦系数}
+ */
+export function calculateInnerTubePressureDrop(
+  density,
+  velocity,
+  length,
+  diameter,
+  re,
+  relativeRoughness = 0.0001,
+  passCount = 1
+) {
+  // 计算摩擦系数
+  const f = calculateFrictionFactor(re, relativeRoughness);
+  
+  // 摩擦压降：Δp = f × (L/D) × (ρv²/2)
+  // 对于多流程，总长度 = 单流程长度 × 流程数
+  const totalLength = length * passCount;
+  const pressureDrop = f * (totalLength / diameter) * (density * velocity * velocity / 2);
+  
+  return {
+    pressureDrop: pressureDrop,              // Pa
+    pressureDrop_kPa: pressureDrop / 1000,   // kPa
+    frictionFactor: f
+  };
+}
+
+/**
+ * 计算环形空间摩擦阻力损失
+ * @param {number} density - 流体密度 (kg/m³)
+ * @param {number} velocity - 流速 (m/s)
+ * @param {number} length - 管长 (m)
+ * @param {number} hydraulicDiameter - 当量直径 (m)
+ * @param {number} re - 雷诺数
+ * @param {number} relativeRoughness - 相对粗糙度（可选，默认0.0001）
+ * @param {number} passCount - 流程数量
+ * @returns {Object} {pressureDrop: 压降 (Pa), pressureDrop_kPa: 压降 (kPa), frictionFactor: 摩擦系数}
+ */
+export function calculateAnnulusPressureDrop(
+  density,
+  velocity,
+  length,
+  hydraulicDiameter,
+  re,
+  relativeRoughness = 0.0001,
+  passCount = 1
+) {
+  // 计算摩擦系数
+  const f = calculateFrictionFactor(re, relativeRoughness);
+  
+  // 摩擦压降：Δp = f × (L/Dh) × (ρv²/2)
+  const totalLength = length * passCount;
+  const pressureDrop = f * (totalLength / hydraulicDiameter) * (density * velocity * velocity / 2);
+  
+  return {
+    pressureDrop: pressureDrop,              // Pa
+    pressureDrop_kPa: pressureDrop / 1000,   // kPa
+    frictionFactor: f
+  };
+}
+
+/**
+ * 计算麻花管的摩擦系数修正（考虑螺旋和梅花截面）
+ * @param {number} baseFrictionFactor - 直管基准摩擦系数
+ * @param {number} twistPitch - 螺旋节距 (m)
+ * @param {number} innerDiameter - 内径 (m)
+ * @param {number} lobeCount - 头数
+ * @returns {number} 修正后的摩擦系数
+ */
+export function calculateTwistedTubeFrictionFactor(
+  baseFrictionFactor,
+  twistPitch,
+  innerDiameter,
+  lobeCount = 4
+) {
+  if (!twistPitch || !innerDiameter) return baseFrictionFactor;
+  
+  const aspectRatio = twistPitch / innerDiameter;
+  
+  // 螺旋引起的摩擦系数增加
+  // 节距越小，摩擦系数越大
+  const spiralFactor = Math.max(1.0, Math.min(2.0, 1.2 / Math.sqrt(aspectRatio)));
+  
+  // 梅花截面引起的摩擦系数增加
+  // 头数越多，摩擦系数越大
+  const lobeFactor = 1.0 + (lobeCount - 3) * 0.15;
+  
+  // 总修正系数（通常在1.5-3.0之间）
+  const totalFactor = spiralFactor * lobeFactor;
+  
+  return baseFrictionFactor * Math.min(3.0, Math.max(1.0, totalFactor));
+}
+
+/**
  * 套管换热器完整计算
  * @param {Object} params - 计算参数
  * @returns {Promise<Object>} 计算结果
@@ -504,11 +640,29 @@ export async function calculateHeatExchanger(params) {
       hotPressure
     );
 
-    // 3. 计算传热系数
+    // 3. 计算传热系数和阻力损失
     let U;
+    let innerPressureDrop = null;
+    let annulusPressureDrop = null;
+    let innerFrictionFactor = null;
+    let annulusFrictionFactor = null;
+    let hotProps = null;
+    let coldProps = null;
+
     if (givenU && givenU > 0) {
-      // 使用给定的传热系数
+      // 使用给定的传热系数，但仍需要计算阻力损失
       U = givenU;
+      
+      // 获取物性用于阻力损失计算
+      const hotTavg = (hotTin + hotTout) / 2 + 273.15;
+      const coldTavg = (coldTin + coldTout) / 2 + 273.15;
+      const hotPressurePa = hotPressure * 1000;
+      const coldPressurePa = coldPressure * 1000;
+
+      [hotProps, coldProps] = await Promise.all([
+        getFluidProperties(hotFluid, hotTavg, hotPressurePa),
+        getFluidProperties(coldFluid, coldTavg, coldPressurePa)
+      ]);
     } else {
       // 自动计算传热系数
       const hotTavg = (hotTin + hotTout) / 2 + 273.15;
@@ -516,7 +670,7 @@ export async function calculateHeatExchanger(params) {
       const hotPressurePa = hotPressure * 1000;
       const coldPressurePa = coldPressure * 1000;
 
-      const [hotProps, coldProps] = await Promise.all([
+      [hotProps, coldProps] = await Promise.all([
         getFluidProperties(hotFluid, hotTavg, hotPressurePa),
         getFluidProperties(coldFluid, coldTavg, coldPressurePa)
       ]);
@@ -538,8 +692,109 @@ export async function calculateHeatExchanger(params) {
       );
     }
 
-    // 4. 计算单管换热面积
+    // 计算管内阻力损失
+    if (hotProps) {
+      const flowRatePerTube = hotFlowRate / innerTubeCount;
+      let innerCrossSection, innerVelocity, innerRe, innerDiameter;
+      
+      if (actualIsTwisted) {
+        // 麻花管：使用梅花截面参数
+        const doMax = outerInnerDiameter;
+        const doMin = actualInnerInnerDiameter;
+        const lobeSection = calculateLobeCrossSection(doMax, doMin, twistLobeCount);
+        innerCrossSection = lobeSection.area;
+        innerDiameter = lobeSection.equivalentDiameter;
+        innerVelocity = flowRatePerTube / (hotProps.density * innerCrossSection);
+        innerRe = calculateReynoldsNumber(
+          hotProps.density,
+          innerVelocity,
+          innerDiameter,
+          hotProps.viscosity
+        );
+      } else {
+        // 直管
+        innerCrossSection = Math.PI * Math.pow(actualInnerInnerDiameter / 2, 2);
+        innerVelocity = flowRatePerTube / (hotProps.density * innerCrossSection);
+        innerDiameter = actualInnerInnerDiameter;
+        innerRe = calculateReynoldsNumber(
+          hotProps.density,
+          innerVelocity,
+          innerDiameter,
+          hotProps.viscosity
+        );
+      }
+
+      let baseInnerFrictionFactor = calculateFrictionFactor(innerRe, 0.0001);
+      if (actualIsTwisted) {
+        // 应用麻花管摩擦系数修正
+        baseInnerFrictionFactor = calculateTwistedTubeFrictionFactor(
+          baseInnerFrictionFactor,
+          twistPitch,
+          actualInnerInnerDiameter,
+          twistLobeCount
+        );
+      }
+      
+      innerFrictionFactor = baseInnerFrictionFactor;
+      innerPressureDrop = calculateInnerTubePressureDrop(
+        hotProps.density,
+        innerVelocity,
+        length,
+        innerDiameter,
+        innerRe,
+        0.0001,
+        passCount
+      );
+      
+      // 如果使用了麻花管修正，需要重新计算压降
+      if (actualIsTwisted) {
+        const totalLength = length * passCount;
+        const correctedPressureDrop = baseInnerFrictionFactor * (totalLength / innerDiameter) * 
+                                      (hotProps.density * innerVelocity * innerVelocity / 2);
+        innerPressureDrop = {
+          pressureDrop: correctedPressureDrop,
+          pressureDrop_kPa: correctedPressureDrop / 1000,
+          frictionFactor: baseInnerFrictionFactor
+        };
+      }
+    }
+
+    // 计算环形空间阻力损失
+    if (coldProps) {
+      const outerInnerRadius = outerInnerDiameter / 2;
+      const innerOuterRadius = actualInnerOuterDiameter / 2;
+      const totalInnerCrossSection = innerTubeCount * Math.PI * Math.pow(innerOuterRadius, 2);
+      const annulusArea = Math.PI * Math.pow(outerInnerRadius, 2) - totalInnerCrossSection;
+      
+      const outerInnerPerimeter = Math.PI * outerInnerDiameter;
+      const innerOuterPerimeter = innerTubeCount * Math.PI * actualInnerOuterDiameter;
+      const hydraulicDiameter = (4 * annulusArea) / (outerInnerPerimeter + innerOuterPerimeter);
+      
+      const annulusVelocity = coldFlowRate / (coldProps.density * annulusArea);
+      const annulusRe = calculateReynoldsNumber(
+        coldProps.density,
+        annulusVelocity,
+        hydraulicDiameter,
+        coldProps.viscosity
+      );
+      
+      annulusFrictionFactor = calculateFrictionFactor(annulusRe, 0.0001);
+      annulusPressureDrop = calculateAnnulusPressureDrop(
+        coldProps.density,
+        annulusVelocity,
+        length,
+        hydraulicDiameter,
+        annulusRe,
+        0.0001,
+        passCount
+      );
+    }
+
+    // 4. 计算实际换热面积（基于几何尺寸）
     let singleTubeArea;
+    let smoothTubeArea = null;  // 对应的光管面积（用于计算翅化系数）
+    let finningRatio = null;    // 翅化系数（麻花管面积/光管面积）
+    
     if (actualIsTwisted) {
       // 麻花管使用实际面积估算（考虑梅花截面和螺旋）
       singleTubeArea = calculateTwistedTubeArea(
@@ -549,19 +804,49 @@ export async function calculateHeatExchanger(params) {
         twistPitch,
         twistLobeCount
       );
+      
+      // 计算相同几何尺寸下的光管面积（用于翅化系数计算）
+      // 光管面积 = π × 外径 × 管长
+      smoothTubeArea = Math.PI * actualInnerOuterDiameter * length;
+      
+      // 计算翅化系数：麻花管面积 / 光管面积
+      if (smoothTubeArea > 0) {
+        finningRatio = singleTubeArea / smoothTubeArea;
+      }
     } else {
-      // 直管：多根内管时，单根外管内的面积为单根内管面积乘以内管数量
-      const singleInnerTubeArea = calculateHeatTransferArea(Q, lmtd, U) / (innerTubeCount * passCount * outerTubeCountPerPass);
+      // 直管：基于几何尺寸计算实际面积
+      // 单根内管的传热面积 = π × 内管外径 × 管长
+      const singleInnerTubeArea = Math.PI * actualInnerOuterDiameter * length;
+      // 单根外管内的总面积 = 单根内管面积 × 内管数量
       singleTubeArea = singleInnerTubeArea * innerTubeCount;
     }
     
-    // 总换热面积 = 单管面积 × 流程数量 × 每流程外管数量
+    // 总实际换热面积 = 单管面积 × 流程数量 × 每流程外管数量
     const totalArea = singleTubeArea * passCount * outerTubeCountPerPass;
     
     // 基于 Q 和 LMTD 反算一个 U_check（用于 sanity check）
     let U_check = null;
     if (totalArea > 0 && lmtd > 0) {
       U_check = Q / (totalArea * lmtd);
+    }
+
+    // 计算所需换热面积
+    const requiredArea = calculateHeatTransferArea(Q, lmtd, U);
+
+    // 计算面积余量（百分比）
+    let areaMargin = null;
+    let areaMarginStatus = 'unknown'; // 'insufficient', 'adequate', 'excessive'
+    if (requiredArea > 0 && totalArea >= 0) {
+      areaMargin = ((totalArea - requiredArea) / requiredArea) * 100;
+      
+      // 判断余量状态
+      if (areaMargin < 10) {
+        areaMarginStatus = 'insufficient';
+      } else if (areaMargin <= 25) {
+        areaMarginStatus = 'adequate';
+      } else {
+        areaMarginStatus = 'excessive';
+      }
     }
 
     // 计算增强系数（如果是麻花管）
@@ -577,12 +862,21 @@ export async function calculateHeatExchanger(params) {
       heatTransferArea: totalArea,
       singleTubeArea: singleTubeArea,
       overallHeatTransferCoefficientCheck: U_check,
+      requiredArea: requiredArea,           // 所需换热面积 (m²)
+      areaMargin: areaMargin,               // 面积余量 (%)
+      areaMarginStatus: areaMarginStatus,   // 余量状态
       innerTubeCount: innerTubeCount,
       innerTubeType: innerTubeType,
       passCount: passCount,
       outerTubeCountPerPass: outerTubeCountPerPass,
       isTwisted: actualIsTwisted,
       enhancementFactor: enhancementFactor,
+      finningRatio: finningRatio,           // 翅化系数（麻花管面积/光管面积）
+      smoothTubeArea: smoothTubeArea,       // 对应的光管面积（m²）
+      innerPressureDrop: innerPressureDrop?.pressureDrop_kPa || null,      // 管内压降 (kPa)
+      innerFrictionFactor: innerFrictionFactor || null,                    // 管内摩擦系数
+      annulusPressureDrop: annulusPressureDrop?.pressureDrop_kPa || null,  // 环形空间压降 (kPa)
+      annulusFrictionFactor: annulusFrictionFactor || null,                // 环形空间摩擦系数
       success: true
     };
   } catch (error) {

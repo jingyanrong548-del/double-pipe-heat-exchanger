@@ -290,28 +290,78 @@
             <!-- 结果展示区域 -->
             <div id="results" class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 hidden">
               <h2 class="text-lg font-semibold text-gray-900 mb-4">计算结果</h2>
-              <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div class="bg-blue-50 rounded-lg p-4 border border-blue-100">
-                  <div class="text-xs text-gray-600 mb-1">传热量</div>
-                  <div id="result-q" class="text-xl font-bold text-blue-700">-</div>
-                  <div class="text-xs text-gray-500 mt-1">kW</div>
-                </div>
-                <div class="bg-green-50 rounded-lg p-4 border border-green-100">
-                  <div class="text-xs text-gray-600 mb-1">对数平均温差</div>
-                  <div id="result-lmtd" class="text-xl font-bold text-green-700">-</div>
-                  <div class="text-xs text-gray-500 mt-1">°C</div>
-                </div>
-                <div class="bg-purple-50 rounded-lg p-4 border border-purple-100">
-                  <div class="text-xs text-gray-600 mb-1">传热系数</div>
-                  <div id="result-u" class="text-xl font-bold text-purple-700">-</div>
-                  <div class="text-xs text-gray-500 mt-1">W/m²·K</div>
-                </div>
-                <div class="bg-orange-50 rounded-lg p-4 border border-orange-100">
-                  <div class="text-xs text-gray-600 mb-1">换热面积</div>
-                  <div id="result-area" class="text-xl font-bold text-orange-700">-</div>
-                  <div class="text-xs text-gray-500 mt-1">m²</div>
+              
+              <!-- 热工参数 -->
+              <div class="mb-4">
+                <h3 class="text-sm font-semibold text-gray-700 mb-2">热工参数</h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div class="bg-blue-50 rounded-lg p-4 border border-blue-100">
+                    <div class="text-xs text-gray-600 mb-1">传热量</div>
+                    <div id="result-q" class="text-xl font-bold text-blue-700">-</div>
+                    <div class="text-xs text-gray-500 mt-1">kW</div>
+                  </div>
+                  <div class="bg-green-50 rounded-lg p-4 border border-green-100">
+                    <div class="text-xs text-gray-600 mb-1">对数平均温差</div>
+                    <div id="result-lmtd" class="text-xl font-bold text-green-700">-</div>
+                    <div class="text-xs text-gray-500 mt-1">°C</div>
+                  </div>
+                  <div class="bg-purple-50 rounded-lg p-4 border border-purple-100">
+                    <div class="text-xs text-gray-600 mb-1">传热系数</div>
+                    <div id="result-u" class="text-xl font-bold text-purple-700">-</div>
+                    <div class="text-xs text-gray-500 mt-1">W/m²·K</div>
+                  </div>
+                  <div class="bg-orange-50 rounded-lg p-4 border border-orange-100">
+                    <div class="text-xs text-gray-600 mb-1">换热面积</div>
+                    <div id="result-area" class="text-xl font-bold text-orange-700">-</div>
+                    <div class="text-xs text-gray-500 mt-1">m² <span class="text-gray-400">(实际面积)</span></div>
+                  </div>
                 </div>
               </div>
+              
+              <!-- 面积余量分析 -->
+              <div class="mb-4">
+                <h3 class="text-sm font-semibold text-gray-700 mb-2">面积余量分析</h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div class="bg-amber-50 rounded-lg p-4 border border-amber-100">
+                    <div class="text-xs text-gray-600 mb-1">所需换热面积</div>
+                    <div id="result-required-area" class="text-xl font-bold text-amber-700">-</div>
+                    <div class="text-xs text-gray-500 mt-1">m²</div>
+                  </div>
+                  <div class="bg-rose-50 rounded-lg p-4 border border-rose-100">
+                    <div class="text-xs text-gray-600 mb-1">面积余量</div>
+                    <div id="result-area-margin" class="text-xl font-bold text-rose-700">-</div>
+                  </div>
+                  <div class="md:col-span-1">
+                    <div id="result-area-margin-status" class="hidden"></div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- 阻力损失参数 -->
+              <div class="mb-4">
+                <h3 class="text-sm font-semibold text-gray-700 mb-2">阻力损失</h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div class="bg-cyan-50 rounded-lg p-4 border border-cyan-100">
+                    <div class="text-xs text-gray-600 mb-1">管内压降</div>
+                    <div id="result-inner-pressure" class="text-xl font-bold text-cyan-700">-</div>
+                    <div class="text-xs text-gray-500 mt-1">kPa</div>
+                  </div>
+                  <div class="bg-teal-50 rounded-lg p-4 border border-teal-100">
+                    <div class="text-xs text-gray-600 mb-1">管外压降</div>
+                    <div id="result-annulus-pressure" class="text-xl font-bold text-teal-700">-</div>
+                    <div class="text-xs text-gray-500 mt-1">kPa</div>
+                  </div>
+                  <div class="bg-indigo-50 rounded-lg p-4 border border-indigo-100">
+                    <div class="text-xs text-gray-600 mb-1">管内摩擦系数</div>
+                    <div id="result-inner-friction" class="text-lg font-bold text-indigo-700">-</div>
+                  </div>
+                  <div class="bg-pink-50 rounded-lg p-4 border border-pink-100">
+                    <div class="text-xs text-gray-600 mb-1">管外摩擦系数</div>
+                    <div id="result-annulus-friction" class="text-lg font-bold text-pink-700">-</div>
+                  </div>
+                </div>
+              </div>
+              
               <div id="error-message" class="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm hidden"></div>
             </div>
           </div>
