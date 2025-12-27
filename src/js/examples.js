@@ -62,18 +62,21 @@ export const twistedTubeExample = {
   coldFlowRate: 0.6,
   coldPressure: 101.325,
   
-  // 换热器参数
-  innerDiameter: 0.020,  // 20mm 内管
-  outerDiameter: 0.045,   // 45mm 外管
-  length: 2.5,            // 2.5米管长（麻花管可以用更短的长度）
+  // 换热器参数（基于真实厂家参数）
+  innerDiameter: 0.028,  // 28mm 内管（基于doMin = 34 - 2*3 = 28mm）
+  outerDiameter: 0.038,   // 38mm 外管（真实参数）
+  innerWallThickness: 0.0015, // 1.5mm 内管壁厚（估算）
+  outerWallThickness: 0.002,  // 2mm 外管壁厚（真实参数）
+  length: 2.5,            // 2.5米管长
   flowType: 'counter',    // 逆流
   
   // 内管参数
   innerTubeCount: 1,      // 1根内管
   innerTubeType: 'twisted', // 麻花管
   isTwisted: true,
-  twistPitch: 0.08,       // 8cm 节距（较紧密的螺旋）
-  twistAngle: 50,         // 50度角度
+  twistPitch: 0.0065,     // 6.5mm 齿距（真实参数）
+  twistLobeCount: 6,      // 6头（真实参数）
+  twistToothHeight: 0.003, // 3mm 齿高（真实参数）
   passCount: 1,           // 1个流程
   outerTubeCountPerPass: 1, // 每流程1根外管
   
@@ -177,6 +180,8 @@ export function loadExampleToForm(exampleData) {
   const twistedParamsDiv = document.getElementById('twisted-tube-params');
   const twistPitchInput = document.getElementById('twist-pitch');
   const twistAngleInput = document.getElementById('twist-angle');
+  const twistToothHeightInput = document.getElementById('twist-tooth-height');
+  const twistLobeCountSelect = document.getElementById('twist-lobe-count');
   
   if (innerTubeCountSelect) {
     innerTubeCountSelect.value = exampleData.innerTubeCount || 1;
@@ -198,7 +203,22 @@ export function loadExampleToForm(exampleData) {
   if (outerTubeCountSelect) {
     outerTubeCountSelect.value = exampleData.outerTubeCountPerPass || 1;
   }
-  if (twistPitchInput) twistPitchInput.value = exampleData.twistPitch || 0.1;
+  
+  // 麻花管参数（注意：twistPitch输入单位为mm，需要转换）
+  if (twistPitchInput) {
+    // 如果示例数据中twistPitch是以m为单位，转换为mm；如果是以mm为单位，直接使用
+    const pitchValue = exampleData.twistPitch || 0.0065;
+    // 如果值大于0.1，认为已经是mm单位；否则认为是m单位，转换为mm
+    twistPitchInput.value = pitchValue > 0.1 ? pitchValue : pitchValue * 1000;
+  }
+  if (twistToothHeightInput) {
+    const heightValue = exampleData.twistToothHeight || 0.003;
+    // 如果值大于0.1，认为已经是mm单位；否则认为是m单位，转换为mm
+    twistToothHeightInput.value = heightValue > 0.1 ? heightValue : heightValue * 1000;
+  }
+  if (twistLobeCountSelect) {
+    twistLobeCountSelect.value = exampleData.twistLobeCount || 6;
+  }
   if (twistAngleInput) twistAngleInput.value = exampleData.twistAngle || 45;
   
   // 触发 change 事件以更新可视化

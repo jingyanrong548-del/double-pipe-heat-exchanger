@@ -23,21 +23,45 @@
         <header class="mb-6">
           <h1 class="text-3xl font-semibold text-gray-900 mb-1">套管换热器计算器</h1>
           <p class="text-sm text-gray-500">Heat Exchanger Calculator</p>
-          <!-- 示例案例按钮 -->
-          <div class="mt-3 flex gap-2">
-            <button id="load-example-straight" class="px-3 py-1.5 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-xs font-medium shadow-sm">
-              加载示例：直管
-            </button>
-            <button id="load-example-twisted" class="px-3 py-1.5 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-xs font-medium shadow-sm">
-              加载示例：麻花管
-            </button>
-          </div>
         </header>
 
         <!-- 主内容区域：左右分栏 -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <!-- 左侧：输入区域 -->
           <div class="lg:col-span-2 space-y-6">
+            <!-- 输入模式选择 -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <h2 class="text-lg font-semibold text-gray-900 mb-4">输入模式</h2>
+              <div class="flex gap-4">
+                <label class="flex items-center cursor-pointer">
+                  <input type="radio" name="input-mode" value="flowrate" id="input-mode-flowrate" class="mr-2" checked>
+                  <span class="text-sm font-medium text-gray-700">流量输入法</span>
+                  <span class="ml-2 text-xs text-gray-500">(输入流量和温度，计算传热量)</span>
+                </label>
+                <label class="flex items-center cursor-pointer">
+                  <input type="radio" name="input-mode" value="load" id="input-mode-load" class="mr-2">
+                  <span class="text-sm font-medium text-gray-700">负荷输入法</span>
+                  <span class="ml-2 text-xs text-gray-500">(输入传热量和温度，计算流量)</span>
+                </label>
+              </div>
+            </div>
+            
+            <!-- 热流体位置选择 -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <h2 class="text-lg font-semibold text-gray-900 mb-4">热流体位置</h2>
+              <div class="flex gap-4">
+                <label class="flex items-center cursor-pointer">
+                  <input type="radio" name="hot-fluid-location" value="inner" id="hot-fluid-location-inner" class="mr-2" checked>
+                  <span class="text-sm font-medium text-gray-700">热流体在管内</span>
+                </label>
+                <label class="flex items-center cursor-pointer">
+                  <input type="radio" name="hot-fluid-location" value="outer" id="hot-fluid-location-outer" class="mr-2">
+                  <span class="text-sm font-medium text-gray-700">热流体在管外</span>
+                </label>
+              </div>
+              <p class="mt-2 text-xs text-gray-500">选择热流体的流动位置，冷流体在另一侧流动</p>
+            </div>
+            
             <!-- 流体参数 -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <!-- 热流体参数 -->
@@ -56,20 +80,55 @@
                     </select>
                   </div>
                   <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">过程类型</label>
+                    <select id="hot-process-type" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all">
+                      <option value="cooling" selected>冷却</option>
+                      <option value="condensation">冷凝</option>
+                    </select>
+                    <p class="mt-1 text-xs text-gray-500">冷却：单相状态（0或1）；冷凝：有相变</p>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">入口状态<span class="text-red-500">*</span></label>
+                    <input type="number" id="hot-state-in" step="0.01" min="0" max="1" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="1.0" value="1.0">
+                    <p class="mt-1 text-xs text-gray-500">0=液体, 1=气体, 0-1=两相（干度值）</p>
+                  </div>
+                  <div>
                     <label class="block text-xs font-medium text-gray-700 mb-1.5">入口温度 (°C)</label>
                     <input type="number" id="hot-tin" step="0.1" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="80" value="80">
+                    <p id="hot-tin-hint" class="mt-1 text-xs text-gray-500 hidden">单相换热：热流体冷却，入口温度应高于出口温度</p>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">出口状态<span class="text-red-500">*</span></label>
+                    <input type="number" id="hot-state-out" step="0.01" min="0" max="1" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="0.0" value="0.0">
+                    <p class="mt-1 text-xs text-gray-500">0=液体, 1=气体, 0-1=两相（干度值）</p>
                   </div>
                   <div>
                     <label class="block text-xs font-medium text-gray-700 mb-1.5">出口温度 (°C)</label>
                     <input type="number" id="hot-tout" step="0.1" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="60" value="60">
+                    <p id="hot-tout-hint" class="mt-1 text-xs text-gray-500 hidden">单相换热：热流体冷却，出口温度应低于入口温度</p>
                   </div>
-                  <div>
-                    <label class="block text-xs font-medium text-gray-700 mb-1.5">质量流量 (kg/s)</label>
+                  <div id="hot-flowrate-container">
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">
+                      <span id="hot-flowrate-label">质量流量 (kg/s)</span>
+                      <span id="hot-flowrate-calculated" class="text-blue-600 ml-2 text-xs font-normal hidden">(计算值)</span>
+                    </label>
                     <input type="number" id="hot-flowrate" step="0.01" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="0.5" value="0.5">
                   </div>
-                  <div>
-                    <label class="block text-xs font-medium text-gray-700 mb-1.5">压力 (kPa)</label>
+                  <div id="hot-pressure-container">
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">
+                      压力 (kPa)
+                      <span id="hot-pressure-required" class="text-red-500">*</span>
+                    </label>
                     <input type="number" id="hot-pressure" step="0.1" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="101.325" value="101.325">
+                    <p id="hot-pressure-hint" class="mt-1 text-xs text-gray-500 hidden">输入后将自动计算饱和温度</p>
+                  </div>
+                  <div id="hot-saturation-temp-container" class="hidden">
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">
+                      饱和温度 (°C)
+                      <span id="hot-saturation-temp-required" class="text-red-500">*</span>
+                    </label>
+                    <input type="number" id="hot-saturation-temp" step="0.1" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="">
+                    <p id="hot-saturation-temp-hint" class="mt-1 text-xs text-gray-500 hidden">输入后将自动计算饱和压力（二选一，不能同时输入）</p>
                   </div>
                 </div>
               </div>
@@ -90,22 +149,67 @@
                     </select>
                   </div>
                   <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">过程类型</label>
+                    <select id="cold-process-type" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all">
+                      <option value="cooling" selected>加热</option>
+                      <option value="evaporation">蒸发</option>
+                    </select>
+                    <p class="mt-1 text-xs text-gray-500">加热：单相状态（0或1）；蒸发：有相变</p>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">入口状态<span class="text-red-500">*</span></label>
+                    <input type="number" id="cold-state-in" step="0.01" min="0" max="1" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="0.0" value="0.0">
+                    <p class="mt-1 text-xs text-gray-500">0=液体, 1=气体, 0-1=两相（干度值）</p>
+                  </div>
+                  <div>
                     <label class="block text-xs font-medium text-gray-700 mb-1.5">入口温度 (°C)</label>
                     <input type="number" id="cold-tin" step="0.1" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="20" value="20">
+                    <p id="cold-tin-hint" class="mt-1 text-xs text-gray-500 hidden">单相换热：冷流体加热，入口温度应低于出口温度</p>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">出口状态<span class="text-red-500">*</span></label>
+                    <input type="number" id="cold-state-out" step="0.01" min="0" max="1" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="0.0" value="0.0">
+                    <p class="mt-1 text-xs text-gray-500">0=液体, 1=气体, 0-1=两相（干度值）</p>
                   </div>
                   <div>
                     <label class="block text-xs font-medium text-gray-700 mb-1.5">出口温度 (°C)</label>
                     <input type="number" id="cold-tout" step="0.1" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="40" value="40">
+                    <p id="cold-tout-hint" class="mt-1 text-xs text-gray-500 hidden">单相换热：冷流体加热，出口温度应高于入口温度</p>
                   </div>
-                  <div>
-                    <label class="block text-xs font-medium text-gray-700 mb-1.5">质量流量 (kg/s)</label>
+                  <div id="cold-flowrate-container">
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">
+                      <span id="cold-flowrate-label">质量流量 (kg/s)</span>
+                      <span id="cold-flowrate-calculated" class="text-blue-600 ml-2 text-xs font-normal hidden">(计算值)</span>
+                    </label>
                     <input type="number" id="cold-flowrate" step="0.01" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="0.5" value="0.5">
                   </div>
-                  <div>
-                    <label class="block text-xs font-medium text-gray-700 mb-1.5">压力 (kPa)</label>
+                  <div id="cold-pressure-container">
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">
+                      压力 (kPa)
+                      <span id="cold-pressure-required" class="text-red-500">*</span>
+                    </label>
                     <input type="number" id="cold-pressure" step="0.1" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="101.325" value="101.325">
+                    <p id="cold-pressure-hint" class="mt-1 text-xs text-gray-500 hidden">输入后将自动计算饱和温度</p>
+                  </div>
+                  <div id="cold-saturation-temp-container" class="hidden">
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">
+                      饱和温度 (°C)
+                      <span id="cold-saturation-temp-required" class="text-red-500">*</span>
+                    </label>
+                    <input type="number" id="cold-saturation-temp" step="0.1" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="">
+                    <p id="cold-saturation-temp-hint" class="mt-1 text-xs text-gray-500 hidden">输入后将自动计算饱和压力（二选一，不能同时输入）</p>
                   </div>
                 </div>
+              </div>
+            </div>
+            
+            <!-- 传热量输入（负荷输入法模式） -->
+            <div id="heat-load-input-container" class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 hidden">
+              <h2 class="text-lg font-semibold text-gray-900 mb-4">传热负荷</h2>
+              <div>
+                <label class="block text-xs font-medium text-gray-700 mb-1.5">传热量 (kW)<span class="text-red-500">*</span></label>
+                <input type="number" id="heat-load" step="0.001" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="输入传热量">
+                <p class="mt-1 text-xs text-gray-500">输入需要传递的热负荷，系统将计算所需的流体流量</p>
               </div>
             </div>
 
@@ -131,7 +235,7 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
                     <label class="block text-xs font-medium text-gray-700 mb-1.5">外管外径 (mm)<span class="text-red-500">*</span></label>
-                    <input type="number" id="outer-outer-diameter" step="0.1" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="40" value="40">
+                    <input type="number" id="outer-outer-diameter" step="0.1" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="38" value="38">
                   </div>
                   <div>
                     <label class="block text-xs font-medium text-gray-700 mb-1.5">外管壁厚 (mm)<span class="text-red-500">*</span></label>
@@ -154,24 +258,47 @@
                     <input type="number" id="inner-wall-thickness" step="0.1" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="2.0" value="2.0">
                   </div>
                 </div>
-                <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <label class="block text-xs font-medium text-gray-700 mb-1.5">内管数量</label>
-                    <select id="inner-tube-count" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all">
-                      <option value="1" selected>1 根</option>
-                      <option value="2">2 根</option>
-                      <option value="3">3 根</option>
-                      <option value="4">4 根</option>
-                      <option value="5">5 根</option>
-                      <option value="6">6 根</option>
-                      <option value="7">7 根</option>
-                      <option value="8">8 根</option>
-                      <option value="9">9 根</option>
-                      <option value="10">10 根</option>
-                    </select>
-                  </div>
+                <div class="mt-3">
+                  <label class="block text-xs font-medium text-gray-700 mb-1.5">内管数量</label>
+                  <select id="inner-tube-count" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all">
+                    <option value="1" selected>1 根</option>
+                    <option value="2">2 根</option>
+                    <option value="3">3 根</option>
+                    <option value="4">4 根</option>
+                    <option value="5">5 根</option>
+                    <option value="6">6 根</option>
+                    <option value="7">7 根</option>
+                    <option value="8">8 根</option>
+                    <option value="9">9 根</option>
+                    <option value="10">10 根</option>
+                  </select>
                 </div>
                 <div class="mt-2 text-xs text-gray-500">内管内径 = 内管外径 - 2×内管壁厚</div>
+              </div>
+              
+              <!-- 内管材质选择（光管和麻花管共用） -->
+              <div class="mb-5">
+                <h3 class="text-sm font-semibold text-gray-900 mb-3">内管材质</h3>
+                <div>
+                  <label class="block text-xs font-medium text-gray-700 mb-1.5">
+                    内管材质<span class="text-red-500">*</span>
+                  </label>
+                  <select id="inner-tube-material" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white" required>
+                    <option value="stainless-steel-304" selected>不锈钢 304</option>
+                    <option value="stainless-steel-316">不锈钢 316</option>
+                    <option value="stainless-steel-316l">不锈钢 316L</option>
+                    <option value="carbon-steel">碳钢</option>
+                    <option value="copper">铜</option>
+                    <option value="aluminum">铝</option>
+                    <option value="titanium">钛</option>
+                    <option value="brass">黄铜</option>
+                    <option value="nickel">镍</option>
+                    <option value="hastelloy">哈氏合金</option>
+                    <option value="monel">蒙乃尔</option>
+                    <option value="duplex-steel">双相不锈钢</option>
+                  </select>
+                  <p class="mt-1 text-xs text-gray-500" id="material-description">奥氏体不锈钢，耐腐蚀性好，适用于一般换热器</p>
+                </div>
               </div>
               
               <!-- 麻花管参数区域 -->
@@ -182,29 +309,51 @@
                     <span class="font-semibold">注意：</span>麻花管模式下，只支持单根内管，且麻花管外径自动等于外管内径（贴合状态）。
                   </div>
                 </div>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <!-- 麻花管预设选项 -->
+                <div class="mb-4">
+                  <label class="block text-xs font-medium text-gray-700 mb-1.5">
+                    麻花管类型（预设）<span class="text-gray-400 text-xs">(可选)</span>
+                  </label>
+                  <select id="twisted-tube-preset" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all">
+                    <option value="">自定义</option>
+                    <option value="35">外管外径 35mm</option>
+                    <option value="38" selected>外管外径 38mm</option>
+                    <option value="42">外管外径 42mm</option>
+                  </select>
+                  <p class="mt-1 text-xs text-gray-500">选择预设类型将自动填充相应参数</p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
                     <label class="block text-xs font-medium text-gray-700 mb-1.5">
                       头数（瓣数）<span class="text-red-500">*</span>
                     </label>
                     <select id="twist-lobe-count" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all">
                       <option value="3">3头</option>
-                      <option value="4" selected>4头</option>
+                      <option value="4">4头</option>
                       <option value="5">5头</option>
-                      <option value="6">6头</option>
+                      <option value="6" selected>6头</option>
                     </select>
                   </div>
                   <div>
                     <label class="block text-xs font-medium text-gray-700 mb-1.5">
-                      螺旋节距 (m)<span class="text-red-500">*</span>
+                      螺旋节距/齿距 (mm)<span class="text-red-500">*</span>
                     </label>
-                    <input type="number" id="twist-pitch" step="0.01" min="0.01" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="0.1" value="0.1">
+                    <input type="number" id="twist-pitch" step="0.1" min="0.1" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="6.5" value="6.5">
+                    <p class="mt-1 text-xs text-gray-500">沿螺旋轴线测量的相邻两齿对应点之间的距离</p>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">
+                      齿高 (mm)<span class="text-red-500">*</span>
+                    </label>
+                    <input type="number" id="twist-tooth-height" step="0.1" min="0.1" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="3.0" value="3.0">
+                    <p class="mt-1 text-xs text-gray-500">梅花截面从谷底到峰顶的单边高度</p>
                   </div>
                   <div>
                     <label class="block text-xs font-medium text-gray-700 mb-1.5">
                       麻花管壁厚 (mm)
                     </label>
-                    <input type="number" id="twist-wall-thickness" step="0.1" min="0.1" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="使用外管壁厚">
+                    <input type="number" id="twist-wall-thickness" step="0.1" min="0.1" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="使用内管壁厚">
+                    <p class="mt-1 text-xs text-gray-500">留空则使用内管壁厚</p>
                   </div>
                 </div>
                 <div class="mt-3 p-3 bg-gray-50 rounded-lg">
@@ -278,6 +427,38 @@
                 <label class="block text-xs font-medium text-gray-700 mb-1.5">传热系数 (W/m²·K) <span class="text-gray-500">(可选，留空则自动计算)</span></label>
                 <input type="number" id="heat-transfer-coefficient" step="0.1" class="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all" placeholder="留空自动计算">
               </div>
+              
+              <!-- 污垢系数 -->
+              <div class="mt-5 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                <h3 class="text-sm font-semibold text-amber-900 mb-3">污垢系数（可选）</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">管内污垢热阻 (m²·K/kW)</label>
+                    <input type="number" id="fouling-inner" step="0.01" min="0" class="w-full px-3 py-2 text-sm rounded-lg border border-amber-300 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all bg-white" placeholder="0 (无污垢)" value="0">
+                    <p class="mt-1 text-xs text-amber-700">
+                      <span class="font-semibold">常用值：</span><br>
+                      水：0.1~0.2 m²·K/kW<br>
+                      油：0.2~0.5 m²·K/kW<br>
+                      盐水：0.2~0.4 m²·K/kW<br>
+                      蒸汽（冷凝）：0.09 m²·K/kW
+                    </p>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1.5">管外污垢热阻 (m²·K/kW)</label>
+                    <input type="number" id="fouling-outer" step="0.01" min="0" class="w-full px-3 py-2 text-sm rounded-lg border border-amber-300 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all bg-white" placeholder="0 (无污垢)" value="0">
+                    <p class="mt-1 text-xs text-amber-700">
+                      <span class="font-semibold">常用值：</span><br>
+                      水：0.1~0.2 m²·K/kW<br>
+                      油：0.2~0.5 m²·K/kW<br>
+                      盐水：0.2~0.4 m²·K/kW<br>
+                      蒸汽（冷凝）：0.09 m²·K/kW
+                    </p>
+                  </div>
+                </div>
+                <p class="mt-2 text-xs text-amber-800">
+                  <span class="font-semibold">说明：</span>污垢热阻反映换热器运行一段时间后污垢沉积对传热的影响。输入0表示无污垢（设计工况），输入实际值可评估运行后的传热性能。单位 m²·K/kW 表示每千瓦传热功率所需的污垢热阻面积。
+                </p>
+              </div>
             </div>
 
             <!-- 计算按钮 -->
@@ -298,6 +479,12 @@
                   <div class="bg-blue-50 rounded-lg p-4 border border-blue-100">
                     <div class="text-xs text-gray-600 mb-1">传热量</div>
                     <div id="result-q" class="text-xl font-bold text-blue-700">-</div>
+                  <div id="result-phase-info" class="mt-2 text-xs text-gray-600 hidden">
+                    <div class="flex flex-wrap gap-2">
+                      <span id="result-hot-phase" class="px-2 py-1 bg-red-100 text-red-700 rounded"></span>
+                      <span id="result-cold-phase" class="px-2 py-1 bg-blue-100 text-blue-700 rounded"></span>
+                    </div>
+                  </div>
                     <div class="text-xs text-gray-500 mt-1">kW</div>
                   </div>
                   <div class="bg-green-50 rounded-lg p-4 border border-green-100">
@@ -358,6 +545,84 @@
                   <div class="bg-pink-50 rounded-lg p-4 border border-pink-100">
                     <div class="text-xs text-gray-600 mb-1">管外摩擦系数</div>
                     <div id="result-annulus-friction" class="text-lg font-bold text-pink-700">-</div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- 温度分布曲线 -->
+              <div class="mt-6 mb-4">
+                <h3 class="text-sm font-semibold text-gray-700 mb-3">温度分布曲线</h3>
+                <div class="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                  <canvas
+                    id="temperature-distribution-canvas"
+                    class="w-full border border-gray-300 rounded-lg bg-white"
+                    style="height: 450px;"
+                  ></canvas>
+                </div>
+                <div class="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div class="text-xs text-blue-800 space-y-1">
+                    <p><span class="font-semibold">说明：</span></p>
+                    <ul class="list-disc list-inside space-y-1 ml-2">
+                      <li><span class="font-medium text-red-600">红色曲线</span>表示热流体温度沿换热器长度的变化</li>
+                      <li><span class="font-medium text-blue-600">蓝色曲线</span>表示冷流体温度沿换热器长度的变化</li>
+                      <li>横坐标为沿换热器的位置（从入口到出口），单位为米 (m)</li>
+                      <li>纵坐标为流体温度，单位为摄氏度 (°C)</li>
+                      <li>图中标注了四个端点温度：<span class="font-medium">Th,in</span>（热流体入口）、<span class="font-medium">Th,out</span>（热流体出口）、<span class="font-medium">Tc,in</span>（冷流体入口）、<span class="font-medium">Tc,out</span>（冷流体出口）</li>
+                      <li><span class="font-medium text-green-600">绿色虚线</span>标注了<span class="font-semibold">最小温差（逼近温差 ΔT_min）</span>，这是换热器设计中的关键参数，表示两流体之间的最小温度差</li>
+                      <li>图表底部显示了<span class="font-medium">流动方向箭头</span>，红色箭头表示热流体流动方向，蓝色箭头表示冷流体流动方向</li>
+                      <li id="flow-type-note" class="mt-2">
+                        <span class="font-semibold">逆流流动：</span>热流体和冷流体从相反方向流动，传热效率较高，两流体温度差较为均匀，可以实现更低的出口温度。最小温差通常出现在换热器的一端
+                      </li>
+                      <li id="parallel-flow-note" class="hidden">
+                        <span class="font-semibold">并流流动：</span>热流体和冷流体从同一方向流动，入口端温差大，出口端温差小，传热效率相对较低，但可以避免局部过热。最小温差出现在出口端
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- 热阻分配比例 -->
+              <div class="mt-6 mb-4">
+                <h3 class="text-sm font-semibold text-gray-700 mb-3">热阻分配比例</h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                  <div class="bg-red-50 rounded-lg p-4 border border-red-100">
+                    <div class="text-xs text-gray-600 mb-1">管内热阻</div>
+                    <div id="result-ri-percentage" class="text-xl font-bold text-red-700">-</div>
+                    <div class="text-xs text-gray-500 mt-1">管内对流传热热阻占比</div>
+                  </div>
+                  <div class="bg-blue-50 rounded-lg p-4 border border-blue-100">
+                    <div class="text-xs text-gray-600 mb-1">管外热阻</div>
+                    <div id="result-ro-percentage" class="text-xl font-bold text-blue-700">-</div>
+                    <div class="text-xs text-gray-500 mt-1">管外对流传热热阻占比</div>
+                  </div>
+                  <div class="bg-gray-50 rounded-lg p-4 border border-gray-100">
+                    <div class="text-xs text-gray-600 mb-1">管壁热阻</div>
+                    <div id="result-rwall-percentage" class="text-xl font-bold text-gray-700">-</div>
+                    <div class="text-xs text-gray-500 mt-1">管壁导热热阻占比</div>
+                  </div>
+                  <div class="bg-orange-50 rounded-lg p-4 border border-orange-100">
+                    <div class="text-xs text-gray-600 mb-1">管内污垢热阻</div>
+                    <div id="result-rfi-percentage" class="text-xl font-bold text-orange-700">-</div>
+                    <div class="text-xs text-gray-500 mt-1">管内污垢热阻占比</div>
+                  </div>
+                  <div class="bg-amber-50 rounded-lg p-4 border border-amber-100">
+                    <div class="text-xs text-gray-600 mb-1">管外污垢热阻</div>
+                    <div id="result-rfo-percentage" class="text-xl font-bold text-amber-700">-</div>
+                    <div class="text-xs text-gray-500 mt-1">管外污垢热阻占比</div>
+                  </div>
+                </div>
+                <div class="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                  <div class="text-xs text-purple-800 space-y-1">
+                    <p><span class="font-semibold">说明：</span></p>
+                    <ul class="list-disc list-inside space-y-1 ml-2">
+                      <li>总热阻 = 管内热阻 + 管外热阻 + 管壁热阻 + 管内污垢热阻 + 管外污垢热阻</li>
+                      <li><span class="font-medium text-red-600">管内热阻</span>：热流体与内管内壁的对流传热热阻</li>
+                      <li><span class="font-medium text-blue-600">管外热阻</span>：冷流体与内管外壁（或外管内壁）的对流传热热阻</li>
+                      <li><span class="font-medium text-gray-600">管壁热阻</span>：管壁材料的导热热阻（通常较小，可忽略）</li>
+                      <li><span class="font-medium text-orange-600">管内污垢热阻</span>：管内壁污垢沉积造成的热阻（取决于流体类型和运行时间）</li>
+                      <li><span class="font-medium text-amber-600">管外污垢热阻</span>：管外壁污垢沉积造成的热阻（取决于流体类型和运行时间）</li>
+                      <li>热阻越大，传热越困难；优化传热应降低占比最大的热阻。污垢热阻会随运行时间增加而增大，导致传热性能下降。</li>
+                    </ul>
                   </div>
                 </div>
               </div>

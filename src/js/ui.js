@@ -4,31 +4,74 @@
  */
 
 import { calculateHeatExchanger, calculateLobeCrossSection } from './heat_exchanger.js';
-import { updateVisualization } from './visualization.js';
-import { loadExampleToForm, straightTubeExample, twistedTubeExample } from './examples.js';
+import { updateVisualization, drawTemperatureDistribution } from './visualization.js';
+import { getMaterialInfo } from './materials.js';
+import { getTwistedTubePreset } from './twisted_tube_presets.js';
 
 /**
  * 获取表单输入值
  * @returns {Object} 表单数据
  */
 export function getFormData() {
+  // 获取输入模式
+  const inputMode = document.querySelector('input[name="input-mode"]:checked')?.value || 'flowrate';
+  // 获取热流体位置
+  const hotFluidLocation = document.querySelector('input[name="hot-fluid-location"]:checked')?.value || 'inner';
+  
   return {
+    inputMode: inputMode,  // 'flowrate' 或 'load'
+    hotFluidLocation: hotFluidLocation,  // 'inner' 或 'outer' - 热流体在管内或管外
     hotFluid: document.getElementById('hot-fluid').value,
+    hotProcessType: document.getElementById('hot-process-type')?.value || 'cooling',
+    hotStateIn: (() => {
+      const val = document.getElementById('hot-state-in')?.value;
+      return val !== undefined && val !== '' ? parseFloat(val) : null;
+    })(),
+    hotStateOut: (() => {
+      const val = document.getElementById('hot-state-out')?.value;
+      return val !== undefined && val !== '' ? parseFloat(val) : null;
+    })(),
     hotTin: parseFloat(document.getElementById('hot-tin').value),
     hotTout: parseFloat(document.getElementById('hot-tout').value),
-    hotFlowRate: parseFloat(document.getElementById('hot-flowrate').value),
-    hotPressure: parseFloat(document.getElementById('hot-pressure').value) || 101.325,
+    hotFlowRate: inputMode === 'flowrate' ? parseFloat(document.getElementById('hot-flowrate').value) : null,
+    hotPressure: (() => {
+      const val = document.getElementById('hot-pressure')?.value;
+      return val ? parseFloat(val) : null;
+    })(),
+    hotSaturationTemp: (() => {
+      const val = document.getElementById('hot-saturation-temp')?.value;
+      return val ? parseFloat(val) : null;
+    })(),
     
     coldFluid: document.getElementById('cold-fluid').value,
+    coldProcessType: document.getElementById('cold-process-type')?.value || 'cooling',
+    coldStateIn: (() => {
+      const val = document.getElementById('cold-state-in')?.value;
+      return val !== undefined && val !== '' ? parseFloat(val) : null;
+    })(),
+    coldStateOut: (() => {
+      const val = document.getElementById('cold-state-out')?.value;
+      return val !== undefined && val !== '' ? parseFloat(val) : null;
+    })(),
     coldTin: parseFloat(document.getElementById('cold-tin').value),
     coldTout: parseFloat(document.getElementById('cold-tout').value),
-    coldFlowRate: parseFloat(document.getElementById('cold-flowrate').value),
-    coldPressure: parseFloat(document.getElementById('cold-pressure').value) || 101.325,
+    coldFlowRate: inputMode === 'flowrate' ? parseFloat(document.getElementById('cold-flowrate').value) : null,
+    coldPressure: (() => {
+      const val = document.getElementById('cold-pressure')?.value;
+      return val ? parseFloat(val) : null;
+    })(),
+    coldSaturationTemp: (() => {
+      const val = document.getElementById('cold-saturation-temp')?.value;
+      return val ? parseFloat(val) : null;
+    })(),
+    
+    heatLoad: inputMode === 'load' ? parseFloat(document.getElementById('heat-load').value) : null,  // kW
     
     // 尺寸输入使用 mm，这里统一转换为 m
     // 获取外径和壁厚
     innerOuterDiameter: parseFloat(document.getElementById('inner-outer-diameter').value) / 1000, // 内管外径 (m)
     innerWallThickness: parseFloat(document.getElementById('inner-wall-thickness').value) / 1000, // 内管壁厚 (m)
+    innerTubeMaterial: document.getElementById('inner-tube-material').value || 'stainless-steel-304', // 内管材质
     outerOuterDiameter: parseFloat(document.getElementById('outer-outer-diameter').value) / 1000, // 外管外径 (m)
     outerWallThickness: parseFloat(document.getElementById('outer-wall-thickness').value) / 1000, // 外管壁厚 (m)
     // 计算内径（用于流速计算）
@@ -45,12 +88,29 @@ export function getFormData() {
       return uInput ? parseFloat(uInput) : null;
     })(),
     
+    // 污垢系数（m²·K/kW，输入值需要转换为 m²·K/W）
+    foulingInner: (() => {
+      const val = document.getElementById('fouling-inner')?.value;
+      return val ? parseFloat(val) / 1000 : 0; // 转换为 m²·K/W (从 m²·K/kW)
+    })(),
+    foulingOuter: (() => {
+      const val = document.getElementById('fouling-outer')?.value;
+      return val ? parseFloat(val) / 1000 : 0; // 转换为 m²·K/W (从 m²·K/kW)
+    })(),
+    
     innerTubeCount: parseInt(document.getElementById('inner-tube-count').value) || 1,
     innerTubeType: document.getElementById('inner-tube-type').value || 'smooth',
     isTwisted: document.getElementById('inner-tube-type').value === 'twisted',
     // 麻花管参数
-    twistLobeCount: parseInt(document.getElementById('twist-lobe-count')?.value) || 4,
-    twistPitch: parseFloat(document.getElementById('twist-pitch')?.value) || 0.1,
+    twistLobeCount: parseInt(document.getElementById('twist-lobe-count')?.value) || 6,
+    twistPitch: (() => {
+      const val = document.getElementById('twist-pitch')?.value;
+      return val ? parseFloat(val) / 1000 : 0.0065; // 转换为m（默认6.5mm = 0.0065m）
+    })(),
+    twistToothHeight: (() => {
+      const val = document.getElementById('twist-tooth-height')?.value;
+      return val ? parseFloat(val) / 1000 : 0.003; // 转换为m（默认3mm = 0.003m）
+    })(),
     twistWallThickness: (() => {
       const val = document.getElementById('twist-wall-thickness')?.value;
       return val ? parseFloat(val) / 1000 : null; // 转换为m，null表示使用内管壁厚
@@ -67,22 +127,101 @@ export function getFormData() {
  */
 export function validateFormData(data) {
   const errors = [];
+  const inputMode = data.inputMode || 'flowrate';
 
   // 验证热流体参数
   if (!data.hotFluid) errors.push('请选择热流体工质');
   if (isNaN(data.hotTin) || data.hotTin <= 0) errors.push('请输入有效的热流体入口温度');
   if (isNaN(data.hotTout) || data.hotTout <= 0) errors.push('请输入有效的热流体出口温度');
-  if (data.hotTin <= data.hotTout) errors.push('热流体入口温度必须大于出口温度');
-  if (isNaN(data.hotFlowRate) || data.hotFlowRate <= 0) errors.push('请输入有效的热流体流量');
-  if (isNaN(data.hotPressure) || data.hotPressure <= 0) errors.push('请输入有效的热流体压力');
+  
+  // 验证状态值输入（热流体）
+  if (data.hotStateIn === null || isNaN(data.hotStateIn) || data.hotStateIn < 0 || data.hotStateIn > 1) {
+    errors.push('热流体入口状态必须在0-1之间（0=液体，1=气体，0-1=两相干度）');
+  }
+  if (data.hotStateOut === null || isNaN(data.hotStateOut) || data.hotStateOut < 0 || data.hotStateOut > 1) {
+    errors.push('热流体出口状态必须在0-1之间（0=液体，1=气体，0-1=两相干度）');
+  }
+  
+  // 验证压力或饱和温度
+  const hotIsPhaseChange = data.hotProcessType === 'condensation';
+  if (hotIsPhaseChange) {
+    // 冷凝：需要压力或饱和温度（二选一，不能同时输入）
+    const hasPressure = data.hotPressure && data.hotPressure > 0;
+    const hasSaturationTemp = data.hotSaturationTemp && data.hotSaturationTemp > 0;
+    
+    if (hasPressure && hasSaturationTemp) {
+      errors.push('冷凝过程不能同时输入压力和饱和温度，请只输入其中一个');
+    } else if (!hasPressure && !hasSaturationTemp) {
+      errors.push('冷凝过程需要输入压力或饱和温度（二选一）');
+    }
+  } else {
+    // 冷却：只需要压力
+    if (!data.hotPressure || data.hotPressure <= 0) {
+      errors.push('请输入有效的热流体压力');
+    }
+  }
+  
+  if (inputMode === 'flowrate') {
+    if (isNaN(data.hotFlowRate) || data.hotFlowRate <= 0) errors.push('请输入有效的热流体流量');
+  }
 
   // 验证冷流体参数
   if (!data.coldFluid) errors.push('请选择冷流体工质');
   if (isNaN(data.coldTin) || data.coldTin <= 0) errors.push('请输入有效的冷流体入口温度');
   if (isNaN(data.coldTout) || data.coldTout <= 0) errors.push('请输入有效的冷流体出口温度');
-  if (data.coldTout <= data.coldTin) errors.push('冷流体出口温度必须大于入口温度');
-  if (isNaN(data.coldFlowRate) || data.coldFlowRate <= 0) errors.push('请输入有效的冷流体流量');
-  if (isNaN(data.coldPressure) || data.coldPressure <= 0) errors.push('请输入有效的冷流体压力');
+  
+  // 验证状态值输入（冷流体）
+  if (data.coldStateIn === null || isNaN(data.coldStateIn) || data.coldStateIn < 0 || data.coldStateIn > 1) {
+    errors.push('冷流体入口状态必须在0-1之间（0=液体，1=气体，0-1=两相干度）');
+  }
+  if (data.coldStateOut === null || isNaN(data.coldStateOut) || data.coldStateOut < 0 || data.coldStateOut > 1) {
+    errors.push('冷流体出口状态必须在0-1之间（0=液体，1=气体，0-1=两相干度）');
+  }
+  
+  // 验证压力或饱和温度
+  const coldIsPhaseChange = data.coldProcessType === 'evaporation';
+  if (coldIsPhaseChange) {
+    // 蒸发：需要压力或饱和温度（二选一，不能同时输入）
+    const hasPressure = data.coldPressure && data.coldPressure > 0;
+    const hasSaturationTemp = data.coldSaturationTemp && data.coldSaturationTemp > 0;
+    
+    if (hasPressure && hasSaturationTemp) {
+      errors.push('蒸发过程不能同时输入压力和饱和温度，请只输入其中一个');
+    } else if (!hasPressure && !hasSaturationTemp) {
+      errors.push('蒸发过程需要输入压力或饱和温度（二选一）');
+    }
+  } else {
+    // 加热（冷流体的cooling实际是加热）：只需要压力
+    if (!data.coldPressure || data.coldPressure <= 0) {
+      errors.push('请输入有效的冷流体压力');
+    }
+  }
+  
+  if (inputMode === 'flowrate') {
+    if (isNaN(data.coldFlowRate) || data.coldFlowRate <= 0) errors.push('请输入有效的冷流体流量');
+  }
+  
+  // 验证温度逻辑（单相换热：热流体冷却，冷流体加热）
+  const hotIsSinglePhase = (data.hotStateIn === 0 || data.hotStateIn === 1) && (data.hotStateOut === 0 || data.hotStateOut === 1);
+  if (hotIsSinglePhase && !hotIsPhaseChange) {
+    // 热流体在单相换热中是冷却过程，温度应该降低
+    if (data.hotTin <= data.hotTout) {
+      errors.push('热流体在单相换热中是冷却过程，入口温度必须大于出口温度');
+    }
+  }
+  
+  const coldIsSinglePhase = (data.coldStateIn === 0 || data.coldStateIn === 1) && (data.coldStateOut === 0 || data.coldStateOut === 1);
+  if (coldIsSinglePhase && !coldIsPhaseChange) {
+    // 冷流体在单相换热中是加热过程，温度应该升高
+    if (data.coldTout <= data.coldTin) {
+      errors.push('冷流体在单相换热中是加热过程，出口温度必须大于入口温度');
+    }
+  }
+
+  // 负荷输入法模式下验证传热量
+  if (inputMode === 'load') {
+    if (isNaN(data.heatLoad) || data.heatLoad <= 0) errors.push('请输入有效的传热量（kW）');
+  }
 
   // 验证温度逻辑
   if (data.hotTin <= data.coldTout) {
@@ -177,9 +316,23 @@ export function validateFormData(data) {
       errors.push('麻花管头数必须在 3-6 之间');
     }
     
-    // 验证螺旋节距
+    // 验证螺旋节距（齿距）
     if (isNaN(data.twistPitch) || data.twistPitch <= 0) {
-      errors.push('螺旋节距必须为有效正值');
+      errors.push('螺旋节距（齿距）必须为有效正值');
+    }
+    
+    // 验证齿高
+    if (isNaN(data.twistToothHeight) || data.twistToothHeight <= 0) {
+      errors.push('齿高必须为有效正值');
+    }
+    
+    // 验证齿高合理性（不应超过外管内径）
+    if (data.twistToothHeight > 0 && data.outerInnerDiameter > 0) {
+      const doMax = data.outerInnerDiameter;
+      const doMin = doMax - 2 * data.twistToothHeight;
+      if (doMin <= 0) {
+        errors.push('齿高过大，导致谷底内切圆直径小于等于0');
+      }
     }
     
     // 麻花管外径必须等于外管内径（贴合状态）
@@ -246,6 +399,22 @@ export function showResults(results) {
     return num.toFixed(decimals);
   };
 
+  // 如果是负荷输入法，更新计算出的流量到输入框
+  if (results.inputMode === 'load') {
+    if (results.calculatedHotFlowRate !== null && results.calculatedHotFlowRate !== undefined) {
+      const hotFlowrateInput = document.getElementById('hot-flowrate');
+      if (hotFlowrateInput) {
+        hotFlowrateInput.value = formatNumber(results.calculatedHotFlowRate, 4);
+      }
+    }
+    if (results.calculatedColdFlowRate !== null && results.calculatedColdFlowRate !== undefined) {
+      const coldFlowrateInput = document.getElementById('cold-flowrate');
+      if (coldFlowrateInput) {
+        coldFlowrateInput.value = formatNumber(results.calculatedColdFlowRate, 4);
+      }
+    }
+  }
+
   const qElement = document.getElementById('result-q');
   const lmtdElement = document.getElementById('result-lmtd');
   const uElement = document.getElementById('result-u');
@@ -255,6 +424,65 @@ export function showResults(results) {
   if (lmtdElement) lmtdElement.textContent = formatNumber(results.lmtd, 2);
   if (uElement) uElement.textContent = formatNumber(results.overallHeatTransferCoefficient, 1);
   if (areaElement) areaElement.textContent = formatNumber(results.heatTransferArea, 3);
+  
+  // 显示相态信息（基于状态值）
+  const phaseInfoEl = document.getElementById('result-phase-info');
+  const hotPhaseEl = document.getElementById('result-hot-phase');
+  const coldPhaseEl = document.getElementById('result-cold-phase');
+  const formData = getFormData();
+  
+  if (phaseInfoEl && hotPhaseEl && coldPhaseEl) {
+    const hotStateIn = formData.hotStateIn;
+    const hotStateOut = formData.hotStateOut;
+    const coldStateIn = formData.coldStateIn;
+    const coldStateOut = formData.coldStateOut;
+    
+    // 将状态值转换为相态描述
+    const getPhaseText = (stateIn, stateOut, fluidName) => {
+      const isInTwoPhase = stateIn > 0 && stateIn < 1;
+      const isOutTwoPhase = stateOut > 0 && stateOut < 1;
+      const isInLiquid = stateIn === 0;
+      const isInGas = stateIn === 1;
+      const isOutLiquid = stateOut === 0;
+      const isOutGas = stateOut === 1;
+      
+      if (isInTwoPhase || isOutTwoPhase) {
+        if (isInTwoPhase && isOutTwoPhase) {
+          return `${fluidName}: 两相 (x=${stateIn.toFixed(2)} → ${stateOut.toFixed(2)})`;
+        } else if (isInTwoPhase) {
+          const outPhase = isOutLiquid ? '液体' : '气体';
+          return `${fluidName}: 两相→${outPhase} (x=${stateIn.toFixed(2)})`;
+        } else {
+          const inPhase = isInLiquid ? '液体' : '气体';
+          return `${fluidName}: ${inPhase}→两相 (x=${stateOut.toFixed(2)})`;
+        }
+      } else {
+        const inPhase = isInLiquid ? '液体' : '气体';
+        const outPhase = isOutLiquid ? '液体' : '气体';
+        if (inPhase === outPhase) {
+          return `${fluidName}: ${inPhase}`;
+        } else {
+          return `${fluidName}: ${inPhase}→${outPhase}`;
+        }
+      }
+    };
+    
+    const hotPhaseText = getPhaseText(hotStateIn, hotStateOut, '热流体');
+    const coldPhaseText = getPhaseText(coldStateIn, coldStateOut, '冷流体');
+    
+    const showPhaseInfo = (hotStateIn !== 0 && hotStateIn !== 1) || (hotStateOut !== 0 && hotStateOut !== 1) ||
+                         (coldStateIn !== 0 && coldStateIn !== 1) || (coldStateOut !== 0 && coldStateOut !== 1) ||
+                         (hotStateIn !== hotStateOut) || (coldStateIn !== coldStateOut);
+    
+    hotPhaseEl.textContent = hotPhaseText;
+    coldPhaseEl.textContent = coldPhaseText;
+    
+    if (showPhaseInfo) {
+      phaseInfoEl.classList.remove('hidden');
+    } else {
+      phaseInfoEl.classList.add('hidden');
+    }
+  }
   
   // 显示阻力损失结果
   const innerPressureEl = document.getElementById('result-inner-pressure');
@@ -273,6 +501,29 @@ export function showResults(results) {
   }
   if (annulusFrictionEl && results.annulusFrictionFactor !== null && results.annulusFrictionFactor !== undefined) {
     annulusFrictionEl.textContent = formatNumber(results.annulusFrictionFactor, 4);
+  }
+  
+  // 显示热阻分配比例
+  const riPercentageEl = document.getElementById('result-ri-percentage');
+  const roPercentageEl = document.getElementById('result-ro-percentage');
+  const rwallPercentageEl = document.getElementById('result-rwall-percentage');
+  const rfiPercentageEl = document.getElementById('result-rfi-percentage');
+  const rfoPercentageEl = document.getElementById('result-rfo-percentage');
+
+  if (riPercentageEl && results.Ri_percentage !== null && results.Ri_percentage !== undefined) {
+    riPercentageEl.textContent = formatNumber(results.Ri_percentage, 1) + '%';
+  }
+  if (roPercentageEl && results.Ro_percentage !== null && results.Ro_percentage !== undefined) {
+    roPercentageEl.textContent = formatNumber(results.Ro_percentage, 1) + '%';
+  }
+  if (rwallPercentageEl && results.Rwall_percentage !== null && results.Rwall_percentage !== undefined) {
+    rwallPercentageEl.textContent = formatNumber(results.Rwall_percentage, 1) + '%';
+  }
+  if (rfiPercentageEl && results.Rfi_percentage !== null && results.Rfi_percentage !== undefined) {
+    rfiPercentageEl.textContent = formatNumber(results.Rfi_percentage, 1) + '%';
+  }
+  if (rfoPercentageEl && results.Rfo_percentage !== null && results.Rfo_percentage !== undefined) {
+    rfoPercentageEl.textContent = formatNumber(results.Rfo_percentage, 1) + '%';
   }
   
   // 显示面积余量结果
@@ -365,6 +616,68 @@ export function showResults(results) {
     
     resultsDiv.appendChild(enhancementInfo);
   }
+
+  // 绘制温度分布曲线
+  if (results.temperatureDistribution) {
+    const canvas = document.getElementById('temperature-distribution-canvas');
+    if (canvas) {
+      // 获取流动方式和长度（从表单数据）
+      const formData = getFormData();
+      const flowType = formData.flowType || 'counter';
+      const length = formData.length || 5.0;
+      
+      // 设置Canvas尺寸（高DPI支持）
+      const container = canvas.parentElement;
+      const containerWidth = container ? container.clientWidth - 32 : 800; // 减去padding
+      const containerHeight = 450; // 增加高度以容纳流动方向箭头和标注
+      
+      // 设置Canvas实际像素尺寸（考虑高DPI）
+      const dpr = window.devicePixelRatio || 1;
+      const actualWidth = containerWidth * dpr;
+      const actualHeight = containerHeight * dpr;
+      
+      canvas.width = actualWidth;
+      canvas.height = actualHeight;
+      canvas.style.width = containerWidth + 'px';
+      canvas.style.height = containerHeight + 'px';
+      
+      // 获取温度参数（从表单或结果中）
+      const hotTin = formData.hotTin;
+      const hotTout = formData.hotTout;
+      const coldTin = formData.coldTin;
+      const coldTout = formData.coldTout;
+      
+      // 绘制温度分布曲线（传入端点温度参数）
+      drawTemperatureDistribution(canvas, results.temperatureDistribution, flowType, length, {
+        hotTin: hotTin,
+        hotTout: hotTout,
+        coldTin: coldTin,
+        coldTout: coldTout
+      });
+      
+      // 更新说明文本
+      const flowTypeNote = document.getElementById('flow-type-note');
+      const parallelFlowNote = document.getElementById('parallel-flow-note');
+      
+      if (flowType === 'counter') {
+        if (flowTypeNote) {
+          flowTypeNote.classList.remove('hidden');
+          flowTypeNote.innerHTML = '<span class="font-semibold">逆流流动：</span>热流体和冷流体从相反方向流动，传热效率较高，两流体温度差较为均匀，可以实现更低的出口温度';
+        }
+        if (parallelFlowNote) {
+          parallelFlowNote.classList.add('hidden');
+        }
+      } else {
+        if (flowTypeNote) {
+          flowTypeNote.classList.add('hidden');
+        }
+        if (parallelFlowNote) {
+          parallelFlowNote.classList.remove('hidden');
+          parallelFlowNote.innerHTML = '<span class="font-semibold">并流流动：</span>热流体和冷流体从同一方向流动，入口端温差大，出口端温差小，传热效率相对较低，但可以避免局部过热';
+        }
+      }
+    }
+  }
 }
 
 /**
@@ -400,6 +713,8 @@ export async function performCalculation() {
 
     // 执行计算
     const results = await calculateHeatExchanger({
+      inputMode: formData.inputMode,
+      heatLoad: formData.heatLoad,  // 负荷输入法时的传热量 (kW)
       hotFluid: formData.hotFluid,
       hotTin: formData.hotTin,
       hotTout: formData.hotTout,
@@ -429,9 +744,14 @@ export async function performCalculation() {
       isTwisted: formData.isTwisted,
       twistLobeCount: formData.twistLobeCount,
       twistPitch: formData.twistPitch,
+      twistToothHeight: formData.twistToothHeight,  // 齿高
       twistWallThickness: formData.twistWallThickness,
       // 麻花管模式下，外径等于外管内径
-      twistOuterDiameter: formData.isTwisted ? formData.outerInnerDiameter : formData.innerOuterDiameter
+      twistOuterDiameter: formData.isTwisted ? formData.outerInnerDiameter : formData.innerOuterDiameter,
+      tubeMaterial: formData.innerTubeMaterial,  // 内管材质
+      foulingInner: formData.foulingInner,  // 管内污垢热阻
+      foulingOuter: formData.foulingOuter,  // 管外污垢热阻
+      hotFluidLocation: formData.hotFluidLocation  // 热流体位置
     });
 
     // 恢复按钮状态
@@ -440,8 +760,8 @@ export async function performCalculation() {
     // 显示结果
     if (results.success) {
       showResults(results);
-    // 更新可视化：显示截面图
-    updateVisualization({
+      // 更新可视化：显示截面图
+      updateVisualization({
       innerDiameter: formData.innerOuterDiameter, // 用于显示
       outerDiameter: formData.outerOuterDiameter, // 用于显示
       innerInnerDiameter: formData.innerInnerDiameter,
@@ -456,18 +776,23 @@ export async function performCalculation() {
       isTwisted: formData.isTwisted,
       twistLobeCount: formData.twistLobeCount,
       twistPitch: formData.twistPitch,
+      twistToothHeight: formData.twistToothHeight,  // 齿高
       twistWallThickness: formData.twistWallThickness,
       twistOuterDiameter: formData.isTwisted ? formData.outerInnerDiameter : formData.innerOuterDiameter,
       passCount: formData.passCount,
       outerTubeCountPerPass: formData.outerTubeCountPerPass
     });
     } else {
-      showError(results.error || '计算失败，请检查输入参数');
+      const errorMsg = results.error || '计算失败，请检查输入参数';
+      console.error('计算返回错误:', errorMsg, results);
+      showError(errorMsg);
     }
   } catch (error) {
     console.error('计算过程出错:', error);
+    console.error('错误堆栈:', error.stack);
     setCalculateButtonState(true, '计算');
-    showError(`计算失败: ${error.message}`);
+    const errorMsg = error.message || '未知错误';
+    showError(`计算失败: ${errorMsg}`);
   }
 }
 
@@ -490,8 +815,9 @@ function getVisualizationParams(formData) {
     innerTubeCount: formData.innerTubeCount || 1,
     innerTubeType: formData.innerTubeType || 'smooth',
     isTwisted: formData.isTwisted,
-    twistLobeCount: formData.twistLobeCount || 4,
-    twistPitch: formData.twistPitch || 0.1,
+    twistLobeCount: formData.twistLobeCount || 6,
+    twistPitch: formData.twistPitch || 0.0065,
+    twistToothHeight: formData.twistToothHeight || 0.003,
     twistWallThickness: formData.twistWallThickness,
     twistOuterDiameter: formData.isTwisted ? formData.outerInnerDiameter : formData.innerOuterDiameter,
     passCount: formData.passCount || 1,
@@ -500,9 +826,65 @@ function getVisualizationParams(formData) {
 }
 
 /**
+ * 更新输入模式UI显示
+ */
+function updateInputModeUI() {
+  const inputMode = document.querySelector('input[name="input-mode"]:checked')?.value || 'flowrate';
+  const heatLoadContainer = document.getElementById('heat-load-input-container');
+  const hotFlowrateContainer = document.getElementById('hot-flowrate-container');
+  const coldFlowrateContainer = document.getElementById('cold-flowrate-container');
+  const hotFlowrateInput = document.getElementById('hot-flowrate');
+  const coldFlowrateInput = document.getElementById('cold-flowrate');
+  const hotFlowrateLabel = document.getElementById('hot-flowrate-label');
+  const coldFlowrateLabel = document.getElementById('cold-flowrate-label');
+  const hotFlowrateCalculated = document.getElementById('hot-flowrate-calculated');
+  const coldFlowrateCalculated = document.getElementById('cold-flowrate-calculated');
+  
+  if (inputMode === 'load') {
+    // 负荷输入法：显示传热量输入，隐藏流量输入或标记为计算值
+    if (heatLoadContainer) heatLoadContainer.classList.remove('hidden');
+    if (hotFlowrateContainer) {
+      hotFlowrateInput.readOnly = true;
+      hotFlowrateInput.classList.add('bg-gray-100', 'cursor-not-allowed');
+      hotFlowrateLabel.textContent = '质量流量 (kg/s)';
+      if (hotFlowrateCalculated) hotFlowrateCalculated.classList.remove('hidden');
+    }
+    if (coldFlowrateContainer) {
+      coldFlowrateInput.readOnly = true;
+      coldFlowrateInput.classList.add('bg-gray-100', 'cursor-not-allowed');
+      coldFlowrateLabel.textContent = '质量流量 (kg/s)';
+      if (coldFlowrateCalculated) coldFlowrateCalculated.classList.remove('hidden');
+    }
+  } else {
+    // 流量输入法：隐藏传热量输入，显示流量输入
+    if (heatLoadContainer) heatLoadContainer.classList.add('hidden');
+    if (hotFlowrateContainer) {
+      hotFlowrateInput.readOnly = false;
+      hotFlowrateInput.classList.remove('bg-gray-100', 'cursor-not-allowed');
+      hotFlowrateLabel.textContent = '质量流量 (kg/s)';
+      if (hotFlowrateCalculated) hotFlowrateCalculated.classList.add('hidden');
+    }
+    if (coldFlowrateContainer) {
+      coldFlowrateInput.readOnly = false;
+      coldFlowrateInput.classList.remove('bg-gray-100', 'cursor-not-allowed');
+      coldFlowrateLabel.textContent = '质量流量 (kg/s)';
+      if (coldFlowrateCalculated) coldFlowrateCalculated.classList.add('hidden');
+    }
+  }
+}
+
+/**
  * 初始化 UI 事件监听
  */
 export function initializeUI() {
+  // 输入模式切换事件
+  const inputModeRadios = document.querySelectorAll('input[name="input-mode"]');
+  inputModeRadios.forEach(radio => {
+    radio.addEventListener('change', updateInputModeUI);
+  });
+  // 初始化UI显示状态
+  updateInputModeUI();
+  
   // 计算按钮点击事件
   const calculateBtn = document.getElementById('calculate-btn');
   if (calculateBtn) {
@@ -522,23 +904,71 @@ export function initializeUI() {
   const twistedParamsDiv = document.getElementById('twisted-tube-params');
   const innerTubeCountSelect = document.getElementById('inner-tube-count');
   
+  // 麻花管预设选择
+  const twistedTubePresetSelect = document.getElementById('twisted-tube-preset');
+  
+  // 当选择麻花管预设时，自动填充参数
+  if (twistedTubePresetSelect) {
+    twistedTubePresetSelect.addEventListener('change', (e) => {
+      const presetId = e.target.value;
+      if (presetId) {
+        const preset = getTwistedTubePreset(presetId);
+        if (preset) {
+          // 填充外管参数
+          const outerOuterDiameterInput = document.getElementById('outer-outer-diameter');
+          const outerWallThicknessInput = document.getElementById('outer-wall-thickness');
+          if (outerOuterDiameterInput) outerOuterDiameterInput.value = preset.outerOuterDiameter;
+          if (outerWallThicknessInput) outerWallThicknessInput.value = preset.outerWallThickness;
+          
+          // 填充内管壁厚
+          const innerWallThicknessInput = document.getElementById('inner-wall-thickness');
+          if (innerWallThicknessInput) innerWallThicknessInput.value = preset.innerWallThickness;
+          
+          // 填充麻花管参数
+          const twistPitchInput = document.getElementById('twist-pitch');
+          const twistToothHeightInput = document.getElementById('twist-tooth-height');
+          const twistLobeCountSelect = document.getElementById('twist-lobe-count');
+          if (twistPitchInput) twistPitchInput.value = preset.pitch;
+          if (twistToothHeightInput) twistToothHeightInput.value = preset.toothHeight;
+          if (twistLobeCountSelect) twistLobeCountSelect.value = preset.lobeCount;
+          
+          // 触发change事件以更新显示
+          if (outerOuterDiameterInput) outerOuterDiameterInput.dispatchEvent(new Event('change'));
+          if (outerWallThicknessInput) outerWallThicknessInput.dispatchEvent(new Event('change'));
+          if (innerWallThicknessInput) innerWallThicknessInput.dispatchEvent(new Event('change'));
+          if (twistPitchInput) twistPitchInput.dispatchEvent(new Event('change'));
+          if (twistToothHeightInput) twistToothHeightInput.dispatchEvent(new Event('change'));
+          if (twistLobeCountSelect) twistLobeCountSelect.dispatchEvent(new Event('change'));
+          
+          // 更新麻花管几何参数显示
+          updateTwistedGeometryDisplay();
+        }
+      }
+    });
+  }
+  
   // 更新麻花管几何参数显示
   const updateTwistedGeometryDisplay = () => {
     const formData = getFormData();
     if (formData.isTwisted) {
       const twistOuterDiameter = formData.outerInnerDiameter; // 麻花管外径 = 外管内径
-      const twistWallThickness = formData.twistWallThickness || formData.outerWallThickness;
-      const twistInnerDiameter = twistOuterDiameter - 2 * twistWallThickness;
+      const twistWallThickness = formData.twistWallThickness || formData.innerWallThickness;
+      // 使用齿高计算doMin，而不是用壁厚
+      const doMax = twistOuterDiameter;
+      const doMin = doMax - 2 * (formData.twistToothHeight || 0.003);
       
       // 更新显示
       const calcOuterDiameterEl = document.getElementById('calc-twist-outer-diameter');
       const calcInnerDiameterEl = document.getElementById('calc-twist-inner-diameter');
-      if (calcOuterDiameterEl) calcOuterDiameterEl.textContent = (twistOuterDiameter * 1000).toFixed(2);
-      if (calcInnerDiameterEl) calcInnerDiameterEl.textContent = (twistInnerDiameter * 1000).toFixed(2);
+      if (calcOuterDiameterEl) calcOuterDiameterEl.textContent = (doMax * 1000).toFixed(2);
+      if (calcInnerDiameterEl) calcInnerDiameterEl.textContent = (doMin * 1000).toFixed(2);
       
       // 计算当量直径和流通面积
       try {
-        const lobeSection = calculateLobeCrossSection(twistOuterDiameter, twistInnerDiameter, formData.twistLobeCount || 4);
+        // 使用齿高计算doMin
+        const doMax = twistOuterDiameter;
+        const doMin = doMax - 2 * (formData.twistToothHeight || 0.003);
+        const lobeSection = calculateLobeCrossSection(doMax, doMin, formData.twistLobeCount || 6);
         
         const calcEquivalentDiameterEl = document.getElementById('calc-twist-equivalent-diameter');
         const calcFlowAreaEl = document.getElementById('calc-twist-flow-area');
@@ -591,17 +1021,28 @@ export function initializeUI() {
     
     innerTubeTypeSelect.addEventListener('change', () => {
       updateTubeTypeParamsVisibility();
+      // 当切换到麻花管模式时，如果预设选择为空，自动选择38mm预设
+      if (innerTubeTypeSelect.value === 'twisted' && twistedTubePresetSelect) {
+        if (!twistedTubePresetSelect.value) {
+          twistedTubePresetSelect.value = '38';
+          twistedTubePresetSelect.dispatchEvent(new Event('change'));
+        }
+      }
       // 更新可视化
       const formData = getFormData();
       updateVisualization(getVisualizationParams(formData));
     });
     
     // 监听相关参数变化，更新几何参数显示
-    const twistInputs = ['outer-outer-diameter', 'outer-wall-thickness', 'twist-wall-thickness', 'twist-lobe-count', 'twist-pitch'];
+    const twistInputs = ['outer-outer-diameter', 'outer-wall-thickness', 'inner-wall-thickness', 'twist-wall-thickness', 'twist-lobe-count', 'twist-pitch', 'twist-tooth-height'];
     twistInputs.forEach(id => {
       const input = document.getElementById(id);
       if (input) {
         input.addEventListener('input', () => {
+          // 如果手动修改了参数，清除预设选择（设为"自定义"）
+          if (twistedTubePresetSelect && twistedTubePresetSelect.value) {
+            twistedTubePresetSelect.value = '';
+          }
           if (innerTubeTypeSelect.value === 'twisted') {
             updateTwistedGeometryDisplay();
           }
@@ -647,23 +1088,187 @@ export function initializeUI() {
       });
     }
   });
-
-  // 示例案例按钮
-  const loadStraightExampleBtn = document.getElementById('load-example-straight');
-  const loadTwistedExampleBtn = document.getElementById('load-example-twisted');
   
-  if (loadStraightExampleBtn) {
-    loadStraightExampleBtn.addEventListener('click', () => {
-      loadExampleToForm(straightTubeExample);
+  // 两相流UI交互：根据过程类型显示/隐藏相应的输入字段
+  const hotProcessTypeSelect = document.getElementById('hot-process-type');
+  const coldProcessTypeSelect = document.getElementById('cold-process-type');
+  const hotPressureContainer = document.getElementById('hot-pressure-container');
+  const hotSaturationTempContainer = document.getElementById('hot-saturation-temp-container');
+  const coldPressureContainer = document.getElementById('cold-pressure-container');
+  const coldSaturationTempContainer = document.getElementById('cold-saturation-temp-container');
+  
+  const updateProcessInputsVisibility = () => {
+    // 热流体
+    if (hotProcessTypeSelect && hotPressureContainer && hotSaturationTempContainer) {
+      const processType = hotProcessTypeSelect.value;
+      const hotPressureHint = document.getElementById('hot-pressure-hint');
+      const hotSaturationTempHint = document.getElementById('hot-saturation-temp-hint');
+      const hotPressureRequired = document.getElementById('hot-pressure-required');
+      const hotSaturationTempRequired = document.getElementById('hot-saturation-temp-required');
+      
+      if (processType === 'cooling') {
+        // 冷却：只显示压力输入
+        hotPressureContainer.classList.remove('hidden');
+        hotSaturationTempContainer.classList.add('hidden');
+        if (hotPressureHint) hotPressureHint.classList.add('hidden');
+        if (hotPressureRequired) hotPressureRequired.classList.remove('hidden');
+      } else if (processType === 'condensation') {
+        // 冷凝：显示压力或饱和温度输入（互斥）
+        hotPressureContainer.classList.remove('hidden');
+        hotSaturationTempContainer.classList.remove('hidden');
+        if (hotPressureHint) hotPressureHint.classList.remove('hidden');
+        if (hotSaturationTempHint) hotSaturationTempHint.classList.remove('hidden');
+        // 两个参数互斥，不是必填的（二选一）
+        if (hotPressureRequired) hotPressureRequired.classList.add('hidden');
+        if (hotSaturationTempRequired) hotSaturationTempRequired.classList.remove('hidden');
+      }
+    }
+    
+    // 冷流体
+    if (coldProcessTypeSelect && coldPressureContainer && coldSaturationTempContainer) {
+      const processType = coldProcessTypeSelect.value;
+      const coldPressureHint = document.getElementById('cold-pressure-hint');
+      const coldSaturationTempHint = document.getElementById('cold-saturation-temp-hint');
+      const coldPressureRequired = document.getElementById('cold-pressure-required');
+      const coldSaturationTempRequired = document.getElementById('cold-saturation-temp-required');
+      
+      if (processType === 'cooling') {
+        // 加热（冷流体的cooling实际是加热）：只显示压力输入
+        coldPressureContainer.classList.remove('hidden');
+        coldSaturationTempContainer.classList.add('hidden');
+        if (coldPressureHint) coldPressureHint.classList.add('hidden');
+        if (coldPressureRequired) coldPressureRequired.classList.remove('hidden');
+      } else if (processType === 'evaporation') {
+        // 蒸发：显示压力或饱和温度输入（互斥）
+        coldPressureContainer.classList.remove('hidden');
+        coldSaturationTempContainer.classList.remove('hidden');
+        if (coldPressureHint) coldPressureHint.classList.remove('hidden');
+        if (coldSaturationTempHint) coldSaturationTempHint.classList.remove('hidden');
+        // 两个参数互斥，不是必填的（二选一）
+        if (coldPressureRequired) coldPressureRequired.classList.add('hidden');
+        if (coldSaturationTempRequired) coldSaturationTempRequired.classList.remove('hidden');
+      }
+    }
+  };
+  
+  // 添加互斥逻辑：当输入压力时，清空饱和温度；当输入饱和温度时，清空压力
+  const hotPressureInput = document.getElementById('hot-pressure');
+  const hotSaturationTempInput = document.getElementById('hot-saturation-temp');
+  const coldPressureInput = document.getElementById('cold-pressure');
+  const coldSaturationTempInput = document.getElementById('cold-saturation-temp');
+  
+  if (hotPressureInput && hotSaturationTempInput) {
+    hotPressureInput.addEventListener('input', () => {
+      if (hotPressureInput.value && hotProcessTypeSelect && hotProcessTypeSelect.value === 'condensation') {
+        hotSaturationTempInput.value = '';
+      }
+    });
+    
+    hotSaturationTempInput.addEventListener('input', () => {
+      if (hotSaturationTempInput.value && hotProcessTypeSelect && hotProcessTypeSelect.value === 'condensation') {
+        hotPressureInput.value = '';
+      }
     });
   }
   
-  if (loadTwistedExampleBtn) {
-    loadTwistedExampleBtn.addEventListener('click', () => {
-      loadExampleToForm(twistedTubeExample);
+  if (coldPressureInput && coldSaturationTempInput) {
+    coldPressureInput.addEventListener('input', () => {
+      if (coldPressureInput.value && coldProcessTypeSelect && coldProcessTypeSelect.value === 'evaporation') {
+        coldSaturationTempInput.value = '';
+      }
+    });
+    
+    coldSaturationTempInput.addEventListener('input', () => {
+      if (coldSaturationTempInput.value && coldProcessTypeSelect && coldProcessTypeSelect.value === 'evaporation') {
+        coldPressureInput.value = '';
+      }
     });
   }
+  
+  // 初始化和绑定事件
+  if (hotProcessTypeSelect) {
+    hotProcessTypeSelect.addEventListener('change', updateProcessInputsVisibility);
+  }
+  if (coldProcessTypeSelect) {
+    coldProcessTypeSelect.addEventListener('change', updateProcessInputsVisibility);
+  }
+  
+  // 初始化显示状态
+  updateProcessInputsVisibility();
+  
+  // 根据过程类型显示温度提示（单相换热时显示）
+  const hotTinHint = document.getElementById('hot-tin-hint');
+  const hotToutHint = document.getElementById('hot-tout-hint');
+  const coldTinHint = document.getElementById('cold-tin-hint');
+  const coldToutHint = document.getElementById('cold-tout-hint');
+  
+  const updateTemperatureHints = () => {
+    if (hotProcessTypeSelect && hotTinHint && hotToutHint) {
+      const processType = hotProcessTypeSelect.value;
+      if (processType === 'cooling') {
+        // 冷却模式（单相换热）：显示提示
+        hotTinHint.classList.remove('hidden');
+        hotToutHint.classList.remove('hidden');
+      } else {
+        // 冷凝模式：隐藏提示
+        hotTinHint.classList.add('hidden');
+        hotToutHint.classList.add('hidden');
+      }
+    }
+    
+    if (coldProcessTypeSelect && coldTinHint && coldToutHint) {
+      const processType = coldProcessTypeSelect.value;
+      if (processType === 'cooling') {
+        // 加热模式（单相换热，冷流体的cooling实际是加热）：显示提示
+        coldTinHint.classList.remove('hidden');
+        coldToutHint.classList.remove('hidden');
+      } else {
+        // 蒸发模式：隐藏提示
+        coldTinHint.classList.add('hidden');
+        coldToutHint.classList.add('hidden');
+      }
+    }
+  };
+  
+  // 监听过程类型变化
+  if (hotProcessTypeSelect) {
+    hotProcessTypeSelect.addEventListener('change', () => {
+      updateProcessInputsVisibility();
+      updateTemperatureHints();
+    });
+  }
+  if (coldProcessTypeSelect) {
+    coldProcessTypeSelect.addEventListener('change', () => {
+      updateProcessInputsVisibility();
+      updateTemperatureHints();
+    });
+  }
+  
+  // 初始化温度提示
+  updateTemperatureHints();
 
+
+  // 监听材质选择变化，更新材质描述
+  const innerTubeMaterialSelect = document.getElementById('inner-tube-material');
+  const materialDescriptionEl = document.getElementById('material-description');
+  if (innerTubeMaterialSelect && materialDescriptionEl) {
+    // 初始化材质描述
+    const initialMaterialId = innerTubeMaterialSelect.value;
+    const initialMaterialInfo = getMaterialInfo(initialMaterialId);
+    if (initialMaterialInfo) {
+      materialDescriptionEl.textContent = initialMaterialInfo.description;
+    }
+    
+    // 监听材质选择变化
+    innerTubeMaterialSelect.addEventListener('change', (e) => {
+      const materialId = e.target.value;
+      const materialInfo = getMaterialInfo(materialId);
+      if (materialInfo) {
+        materialDescriptionEl.textContent = materialInfo.description;
+      }
+    });
+  }
+  
   // 初始可视化
   updateVisualization({
     innerDiameter: 0.02,

@@ -660,3 +660,494 @@ export function updateVisualization(params) {
   drawFrontView(frontCanvas, params);
 }
 
+/**
+ * 绘制箭头
+ * @param {CanvasRenderingContext2D} ctx - Canvas 2D 上下文
+ * @param {number} x - 箭头起点x坐标
+ * @param {number} y - 箭头起点y坐标
+ * @param {number} angle - 箭头角度（弧度）
+ * @param {number} length - 箭头长度
+ * @param {string} color - 箭头颜色
+ */
+function drawArrow(ctx, x, y, angle, length, color) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  
+  const arrowHeadLength = 8;
+  const arrowHeadAngle = Math.PI / 6;
+  
+  // 绘制箭头线
+  const endX = x + Math.cos(angle) * length;
+  const endY = y + Math.sin(angle) * length;
+  
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(endX, endY);
+  ctx.stroke();
+  
+  // 绘制箭头头部
+  ctx.beginPath();
+  ctx.moveTo(endX, endY);
+  ctx.lineTo(
+    endX - arrowHeadLength * Math.cos(angle - arrowHeadAngle),
+    endY - arrowHeadLength * Math.sin(angle - arrowHeadAngle)
+  );
+  ctx.moveTo(endX, endY);
+  ctx.lineTo(
+    endX - arrowHeadLength * Math.cos(angle + arrowHeadAngle),
+    endY - arrowHeadLength * Math.sin(angle + arrowHeadAngle)
+  );
+  ctx.stroke();
+  ctx.fill();
+  
+  ctx.restore();
+}
+
+/**
+ * 绘制温度分布曲线
+ * @param {HTMLCanvasElement} canvas - Canvas 元素
+ * @param {Object} data - 温度分布数据
+ * @param {Array<number>} data.positions - 位置数组 (m)
+ * @param {Array<number>} data.hotTemperatures - 热流体温度数组 (°C)
+ * @param {Array<number>} data.coldTemperatures - 冷流体温度数组 (°C)
+ * @param {string} flowType - 流动方式: 'counter' (逆流) 或 'parallel' (并流)
+ * @param {number} length - 换热器长度 (m)
+ * @param {Object} params - 额外参数 {hotTin, hotTout, coldTin, coldTout}
+ */
+export function drawTemperatureDistribution(canvas, data, flowType = 'counter', length = 5.0, params = {}) {
+  if (!canvas || !data || !data.positions || !data.hotTemperatures || !data.coldTemperatures) {
+    return;
+  }
+
+  const ctx = canvas.getContext('2d');
+  const width = canvas.width;
+  const height = canvas.height;
+  
+  // 清除画布
+  ctx.clearRect(0, 0, width, height);
+  
+  // 设置边距（增加左右边距以容纳温度标注，避免被截断）
+  const padding = { top: 50, right: 100, bottom: 100, left: 100 };
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  
+  // 计算温度范围
+  const allTemps = [...data.hotTemperatures, ...data.coldTemperatures];
+  const minTemp = Math.min(...allTemps);
+  const maxTemp = Math.max(...allTemps);
+  const tempRange = maxTemp - minTemp;
+  const tempPadding = tempRange * 0.1; // 10% 边距
+  const tempMin = minTemp - tempPadding;
+  const tempMax = maxTemp + tempPadding;
+  
+  // 坐标转换函数
+  const xToCanvas = (x) => padding.left + (x / length) * plotWidth;
+  const yToCanvas = (temp) => padding.top + plotHeight - ((temp - tempMin) / (tempMax - tempMin)) * plotHeight;
+  
+  // 绘制背景
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, width, height);
+  
+  // 绘制网格
+  ctx.strokeStyle = '#e5e7eb';
+  ctx.lineWidth = 1;
+  
+  // 水平网格线（温度）
+  const numTempGridLines = 6;
+  for (let i = 0; i <= numTempGridLines; i++) {
+    const temp = tempMin + (i / numTempGridLines) * (tempMax - tempMin);
+    const y = yToCanvas(temp);
+    ctx.beginPath();
+    ctx.moveTo(padding.left, y);
+    ctx.lineTo(padding.left + plotWidth, y);
+    ctx.stroke();
+  }
+  
+  // 垂直网格线（位置）
+  const numPosGridLines = 5;
+  for (let i = 0; i <= numPosGridLines; i++) {
+    const x = padding.left + (i / numPosGridLines) * plotWidth;
+    ctx.beginPath();
+    ctx.moveTo(x, padding.top);
+    ctx.lineTo(x, padding.top + plotHeight);
+    ctx.stroke();
+  }
+  
+  // 绘制坐标轴
+  ctx.strokeStyle = '#374151';
+  ctx.lineWidth = 2;
+  
+  // X轴（位置）
+  ctx.beginPath();
+  ctx.moveTo(padding.left, padding.top + plotHeight);
+  ctx.lineTo(padding.left + plotWidth, padding.top + plotHeight);
+  ctx.stroke();
+  
+  // Y轴（温度）
+  ctx.beginPath();
+  ctx.moveTo(padding.left, padding.top);
+  ctx.lineTo(padding.left, padding.top + plotHeight);
+  ctx.stroke();
+  
+  // 绘制坐标轴标签
+  ctx.fillStyle = '#374151';
+  ctx.font = '12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  
+  // X轴标签（位置）
+  for (let i = 0; i <= numPosGridLines; i++) {
+    const pos = (i / numPosGridLines) * length;
+    const x = padding.left + (i / numPosGridLines) * plotWidth;
+    ctx.fillText(pos.toFixed(1) + ' m', x, padding.top + plotHeight + 10);
+  }
+  
+  // Y轴标签（温度）
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i <= numTempGridLines; i++) {
+    const temp = tempMin + (i / numTempGridLines) * (tempMax - tempMin);
+    const y = yToCanvas(temp);
+    // 确保标签不会与左侧标注重叠
+    ctx.fillText(temp.toFixed(1) + '°C', padding.left - 15, y);
+  }
+  
+  // 绘制坐标轴标题
+  ctx.font = '14px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('位置 (m)', padding.left + plotWidth / 2, height - 15);
+  
+  ctx.save();
+  ctx.translate(15, padding.top + plotHeight / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.textAlign = 'center';
+  ctx.fillText('温度 (°C)', 0, 0);
+  ctx.restore();
+  
+  // 绘制热流体温度曲线
+  ctx.strokeStyle = '#ef4444'; // 红色
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (let i = 0; i < data.positions.length; i++) {
+    const x = xToCanvas(data.positions[i]);
+    const y = yToCanvas(data.hotTemperatures[i]);
+    if (i === 0) {
+      ctx.moveTo(x, y);
+    } else {
+      ctx.lineTo(x, y);
+    }
+  }
+  ctx.stroke();
+  
+  // 绘制冷流体温度曲线
+  ctx.strokeStyle = '#3b82f6'; // 蓝色
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (let i = 0; i < data.positions.length; i++) {
+    const x = xToCanvas(data.positions[i]);
+    const y = yToCanvas(data.coldTemperatures[i]);
+    if (i === 0) {
+      ctx.moveTo(x, y);
+    } else {
+      ctx.lineTo(x, y);
+    }
+  }
+  ctx.stroke();
+  
+  // 计算最小温差（逼近温差）
+  let minTempDiff = Infinity;
+  let minTempDiffIndex = 0;
+  for (let i = 0; i < data.positions.length; i++) {
+    const tempDiff = Math.abs(data.hotTemperatures[i] - data.coldTemperatures[i]);
+    if (tempDiff < minTempDiff) {
+      minTempDiff = tempDiff;
+      minTempDiffIndex = i;
+    }
+  }
+  
+  // 获取端点温度
+  const hotTin = params.hotTin !== undefined ? params.hotTin : data.hotTemperatures[0];
+  const hotTout = params.hotTout !== undefined ? params.hotTout : data.hotTemperatures[data.hotTemperatures.length - 1];
+  const coldTin = params.coldTin !== undefined ? params.coldTin : (flowType === 'counter' ? data.coldTemperatures[data.coldTemperatures.length - 1] : data.coldTemperatures[0]);
+  const coldTout = params.coldTout !== undefined ? params.coldTout : (flowType === 'counter' ? data.coldTemperatures[0] : data.coldTemperatures[data.coldTemperatures.length - 1]);
+  
+  // 绘制端点温度标注（重新设计布局，避免重叠）
+  ctx.font = 'bold 11px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  
+  // 计算标注位置（增加偏移量避免重叠和截断）
+  const labelOffsetY = 35; // 垂直偏移（增加以避免重叠）
+  const labelOffsetX = 50; // 水平偏移（用于侧边标注，确保不被截断）
+  
+  // 辅助函数：检查并调整标注位置，确保不被截断
+  const getSafeTextX = (x, text, align, offsetX) => {
+    const textWidth = ctx.measureText(text).width;
+    if (align === 'right') {
+      // 右对齐：确保文本左边界在canvas内
+      return Math.max(5, Math.min(x - offsetX, width - textWidth - 5));
+    } else {
+      // 左对齐：确保文本右边界在canvas内
+      return Math.min(width - textWidth - 5, Math.max(5, x + offsetX));
+    }
+  };
+  
+  const getSafeTextY = (y, offsetY) => {
+    // 确保文本垂直方向在canvas内（考虑文本高度约15px）
+    return Math.max(15, Math.min(height - 15, y + offsetY));
+  };
+  
+  if (flowType === 'counter') {
+    // 逆流模式：重新布局标注，分散放置避免重叠
+    // 左侧：热流体入口（上方）、冷流体出口（下方）
+    const leftX = xToCanvas(0);
+    const hotTinY = yToCanvas(hotTin);
+    const coldToutY = yToCanvas(coldTout);
+    
+    // 热流体入口（左侧上方，距离曲线更远）
+    ctx.fillStyle = '#ef4444';
+    ctx.beginPath();
+    ctx.arc(leftX, hotTinY, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#111827';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    const hotTinLabelX = getSafeTextX(leftX, `Th,in`, 'right', labelOffsetX);
+    const hotTinLabelY1 = getSafeTextY(hotTinY, -labelOffsetY);
+    const hotTinLabelY2 = getSafeTextY(hotTinY, -labelOffsetY + 16);
+    ctx.fillText(`Th,in`, hotTinLabelX, hotTinLabelY1);
+    ctx.fillText(`${hotTin.toFixed(1)}°C`, hotTinLabelX, hotTinLabelY2);
+    
+    // 冷流体出口（左侧下方，距离曲线更远）
+    ctx.fillStyle = '#3b82f6';
+    ctx.beginPath();
+    ctx.arc(leftX, coldToutY, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#111827';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    const coldToutLabelX = getSafeTextX(leftX, `Tc,out`, 'right', labelOffsetX);
+    const coldToutLabelY1 = getSafeTextY(coldToutY, labelOffsetY);
+    const coldToutLabelY2 = getSafeTextY(coldToutY, labelOffsetY + 16);
+    ctx.fillText(`Tc,out`, coldToutLabelX, coldToutLabelY1);
+    ctx.fillText(`${coldTout.toFixed(1)}°C`, coldToutLabelX, coldToutLabelY2);
+    
+    // 右侧：热流体出口（上方）、冷流体入口（下方）
+    const rightX = xToCanvas(length);
+    const hotToutY = yToCanvas(hotTout);
+    const coldTinY = yToCanvas(coldTin);
+    
+    // 热流体出口（右侧上方，距离曲线更远）
+    ctx.fillStyle = '#ef4444';
+    ctx.beginPath();
+    ctx.arc(rightX, hotToutY, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#111827';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const hotToutLabelX = getSafeTextX(rightX, `Th,out`, 'left', labelOffsetX);
+    const hotToutLabelY1 = getSafeTextY(hotToutY, -labelOffsetY);
+    const hotToutLabelY2 = getSafeTextY(hotToutY, -labelOffsetY + 16);
+    ctx.fillText(`Th,out`, hotToutLabelX, hotToutLabelY1);
+    ctx.fillText(`${hotTout.toFixed(1)}°C`, hotToutLabelX, hotToutLabelY2);
+    
+    // 冷流体入口（右侧下方，距离曲线更远）
+    ctx.fillStyle = '#3b82f6';
+    ctx.beginPath();
+    ctx.arc(rightX, coldTinY, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#111827';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const coldTinLabelX = getSafeTextX(rightX, `Tc,in`, 'left', labelOffsetX);
+    const coldTinLabelY1 = getSafeTextY(coldTinY, labelOffsetY);
+    const coldTinLabelY2 = getSafeTextY(coldTinY, labelOffsetY + 16);
+    ctx.fillText(`Tc,in`, coldTinLabelX, coldTinLabelY1);
+    ctx.fillText(`${coldTin.toFixed(1)}°C`, coldTinLabelX, coldTinLabelY2);
+    
+  } else {
+    // 并流模式：左侧入口，右侧出口
+    // 左侧：热流体入口（上方）、冷流体入口（下方）
+    const leftX = xToCanvas(0);
+    const hotTinY = yToCanvas(hotTin);
+    const coldTinY = yToCanvas(coldTin);
+    
+    // 热流体入口（左侧上方，距离曲线更远）
+    ctx.fillStyle = '#ef4444';
+    ctx.beginPath();
+    ctx.arc(leftX, hotTinY, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#111827';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    const hotTinLabelX = getSafeTextX(leftX, `Th,in`, 'right', labelOffsetX);
+    const hotTinLabelY1 = getSafeTextY(hotTinY, -labelOffsetY);
+    const hotTinLabelY2 = getSafeTextY(hotTinY, -labelOffsetY + 16);
+    ctx.fillText(`Th,in`, hotTinLabelX, hotTinLabelY1);
+    ctx.fillText(`${hotTin.toFixed(1)}°C`, hotTinLabelX, hotTinLabelY2);
+    
+    // 冷流体入口（左侧下方，距离曲线更远）
+    ctx.fillStyle = '#3b82f6';
+    ctx.beginPath();
+    ctx.arc(leftX, coldTinY, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#111827';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    const coldTinLabelX = getSafeTextX(leftX, `Tc,in`, 'right', labelOffsetX);
+    const coldTinLabelY1 = getSafeTextY(coldTinY, labelOffsetY);
+    const coldTinLabelY2 = getSafeTextY(coldTinY, labelOffsetY + 16);
+    ctx.fillText(`Tc,in`, coldTinLabelX, coldTinLabelY1);
+    ctx.fillText(`${coldTin.toFixed(1)}°C`, coldTinLabelX, coldTinLabelY2);
+    
+    // 右侧：热流体出口（上方）、冷流体出口（下方）
+    const rightX = xToCanvas(length);
+    const hotToutY = yToCanvas(hotTout);
+    const coldToutY = yToCanvas(coldTout);
+    
+    // 热流体出口（右侧上方，距离曲线更远）
+    ctx.fillStyle = '#ef4444';
+    ctx.beginPath();
+    ctx.arc(rightX, hotToutY, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#111827';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const hotToutLabelX = getSafeTextX(rightX, `Th,out`, 'left', labelOffsetX);
+    const hotToutLabelY1 = getSafeTextY(hotToutY, -labelOffsetY);
+    const hotToutLabelY2 = getSafeTextY(hotToutY, -labelOffsetY + 16);
+    ctx.fillText(`Th,out`, hotToutLabelX, hotToutLabelY1);
+    ctx.fillText(`${hotTout.toFixed(1)}°C`, hotToutLabelX, hotToutLabelY2);
+    
+    // 冷流体出口（右侧下方，距离曲线更远）
+    ctx.fillStyle = '#3b82f6';
+    ctx.beginPath();
+    ctx.arc(rightX, coldToutY, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#111827';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const coldToutLabelX = getSafeTextX(rightX, `Tc,out`, 'left', labelOffsetX);
+    const coldToutLabelY1 = getSafeTextY(coldToutY, labelOffsetY);
+    const coldToutLabelY2 = getSafeTextY(coldToutY, labelOffsetY + 16);
+    ctx.fillText(`Tc,out`, coldToutLabelX, coldToutLabelY1);
+    ctx.fillText(`${coldTout.toFixed(1)}°C`, coldToutLabelX, coldToutLabelY2);
+  }
+  
+  // 绘制最小温差（逼近温差）标注
+  const minDiffX = xToCanvas(data.positions[minTempDiffIndex]);
+  const minDiffHotY = yToCanvas(data.hotTemperatures[minTempDiffIndex]);
+  const minDiffColdY = yToCanvas(data.coldTemperatures[minTempDiffIndex]);
+  const minDiffMidY = (minDiffHotY + minDiffColdY) / 2;
+  
+  // 绘制连接线
+  ctx.strokeStyle = '#10b981';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([5, 5]);
+  ctx.beginPath();
+  ctx.moveTo(minDiffX, minDiffHotY);
+  ctx.lineTo(minDiffX, minDiffColdY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  
+  // 标注最小温差值（放在图表上方，避免与端点标注重叠）
+  ctx.fillStyle = '#10b981';
+  ctx.font = 'bold 12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+  
+  // 检查最小温差位置，调整标注位置避免与纵坐标和端点标注重叠
+  const minDiffPos = data.positions[minTempDiffIndex];
+  let minDiffLabelY = minDiffMidY;
+  let minDiffLabelX = minDiffX;
+  
+  // 检查是否与纵坐标重叠（左边缘）
+  const minDiffBoxWidth = 100; // 估算框宽度
+  const minDiffBoxHalfWidth = minDiffBoxWidth / 2;
+  
+  // 如果最小温差位置靠近左端（可能与纵坐标重叠），将标注移到右侧
+  if (minDiffX - minDiffBoxHalfWidth < padding.left + 50) {
+    minDiffLabelX = padding.left + plotWidth * 0.6; // 移到图表中间偏右
+    minDiffLabelY = padding.top + plotHeight * 0.5; // 移到图表中间
+  } else if (minDiffPos > length * 0.85) {
+    // 如果靠近右端，移到中间位置
+    minDiffLabelX = padding.left + plotWidth * 0.5;
+    minDiffLabelY = padding.top + 25;
+  } else if (minDiffPos < length * 0.15) {
+    // 如果靠近左端，移到中间位置
+    minDiffLabelX = padding.left + plotWidth * 0.5;
+    minDiffLabelY = padding.top + 25;
+  }
+  
+  // 绘制背景框使文字更清晰
+  const labelText = `ΔT_min = ${minTempDiff.toFixed(1)}°C`;
+  const textMetrics = ctx.measureText(labelText);
+  const boxWidth = textMetrics.width + 12;
+  const boxHeight = 18;
+  const boxX = minDiffLabelX - boxWidth / 2;
+  const boxY = minDiffLabelY - boxHeight - 3;
+  
+  // 确保框不会超出图表区域
+  const finalBoxX = Math.max(padding.left + 5, Math.min(boxX, padding.left + plotWidth - boxWidth - 5));
+  const finalBoxY = Math.max(padding.top + 5, boxY);
+  
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+  ctx.fillRect(finalBoxX - 2, finalBoxY - 2, boxWidth + 4, boxHeight + 4);
+  ctx.strokeStyle = '#10b981';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(finalBoxX - 2, finalBoxY - 2, boxWidth + 4, boxHeight + 4);
+  
+  ctx.fillStyle = '#10b981';
+  ctx.fillText(labelText, minDiffLabelX, minDiffLabelY);
+  
+  // 绘制流动方向箭头（放在曲线内部，但移除文字标注，避免与图例重复）
+  const arrowLength = 32;
+  const arrowOffsetFromCurve = 12; // 箭头距离曲线的距离
+  
+  if (flowType === 'counter') {
+    // 逆流模式
+    // 热流体箭头（从左到右，放在热流体曲线上方）
+    const hotArrowPos = 0.35; // 位置比例（稍微调整避免与标注重叠）
+    const hotArrowX = xToCanvas(length * hotArrowPos);
+    const hotArrowY = yToCanvas(data.hotTemperatures[Math.floor(data.hotTemperatures.length * hotArrowPos)]) - arrowOffsetFromCurve;
+    drawArrow(ctx, hotArrowX, hotArrowY, 0, arrowLength, '#ef4444');
+    // 移除文字标注，图例已说明
+    
+    // 冷流体箭头（从右到左，放在冷流体曲线下方）
+    const coldArrowPos = 0.65; // 位置比例（稍微调整避免与标注重叠）
+    const coldArrowX = xToCanvas(length * coldArrowPos);
+    const coldArrowY = yToCanvas(data.coldTemperatures[Math.floor(data.coldTemperatures.length * coldArrowPos)]) + arrowOffsetFromCurve;
+    drawArrow(ctx, coldArrowX, coldArrowY, Math.PI, arrowLength, '#3b82f6');
+    // 移除文字标注，图例已说明
+    
+  } else {
+    // 并流模式
+    // 热流体箭头（从左到右，放在热流体曲线上方）
+    const hotArrowPos = 0.35;
+    const hotArrowX = xToCanvas(length * hotArrowPos);
+    const hotArrowY = yToCanvas(data.hotTemperatures[Math.floor(data.hotTemperatures.length * hotArrowPos)]) - arrowOffsetFromCurve;
+    drawArrow(ctx, hotArrowX, hotArrowY, 0, arrowLength, '#ef4444');
+    // 移除文字标注，图例已说明
+    
+    // 冷流体箭头（从左到右，放在冷流体曲线下方）
+    const coldArrowPos = 0.35;
+    const coldArrowX = xToCanvas(length * coldArrowPos);
+    const coldArrowY = yToCanvas(data.coldTemperatures[Math.floor(data.coldTemperatures.length * coldArrowPos)]) + arrowOffsetFromCurve;
+    drawArrow(ctx, coldArrowX, coldArrowY, 0, arrowLength, '#3b82f6');
+    // 移除文字标注，图例已说明
+  }
+  
+  // 绘制标题（移到最上方，避免与标注冲突）
+  ctx.fillStyle = '#111827';
+  ctx.font = 'bold 16px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText('沿换热器长度温度分布', padding.left + plotWidth / 2, 10);
+  
+  // 图例已移除，箭头颜色已能区分冷热流体
+}
+
