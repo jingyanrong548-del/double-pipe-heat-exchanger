@@ -13,6 +13,8 @@ export function drawSideView(canvas, params) {
     innerDiameter = 0.02,
     outerDiameter = 0.04,
     length = 5.0,
+    innerTubeCount = 1,
+    innerTubeType = 'smooth',
     isTwisted = false,
     twistPitch = 0.1,
     twistAngle = 45,
@@ -25,6 +27,8 @@ export function drawSideView(canvas, params) {
     lmtd,                          // °C
     overallHeatTransferCoefficient // W/m²·K
   } = params;
+  
+  const actualIsTwisted = innerTubeType === 'twisted' || isTwisted;
 
   const ctx = canvas.getContext('2d');
   const width = canvas.width;
@@ -59,112 +63,101 @@ export function drawSideView(canvas, params) {
   ctx.fillStyle = 'rgba(59, 130, 246, 0.1)';
   ctx.fillRect(startX, centerY - (outerDiameter / 2) * scale, drawLength, outerDiameter * scale);
   
-  // 绘制内管 - 加粗线条
-  ctx.strokeStyle = '#ef4444'; // 红色
-  ctx.lineWidth = 3;
+  // 绘制多根内管
+  const tubeSpacing = (outerDiameter - innerDiameter * innerTubeCount) / (innerTubeCount + 1);
+  const startOffset = tubeSpacing + innerDiameter / 2;
   
-  if (isTwisted) {
-    // 绘制螺旋扭曲的内管 - 增加点数使曲线更平滑
-    const numTwists = Math.ceil(length / twistPitch);
-    const pointsPerTwist = 100; // 增加点数
-    const totalPoints = numTwists * pointsPerTwist;
+  for (let tubeIndex = 0; tubeIndex < innerTubeCount; tubeIndex++) {
+    // 计算每根内管的垂直位置（在侧视图中，多根内管垂直排列）
+    const tubeCenterY = centerY - (outerDiameter / 2) + startOffset + tubeIndex * (innerDiameter + tubeSpacing);
     
-    // 绘制中心线（螺旋路径）
-    ctx.strokeStyle = '#ef4444';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    for (let i = 0; i <= totalPoints; i++) {
-      const t = i / totalPoints;
-      const x = startX + t * drawLength;
-      const angle = (t * numTwists * 2 * Math.PI) + (twistAngle * Math.PI / 180);
-      const offset = Math.sin(angle) * (outerDiameter - innerDiameter) / 4;
-      const y = centerY + offset * scale;
-      
-      if (i === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
-      }
-    }
-    ctx.stroke();
-    
-    // 绘制上边界（螺旋）
-    ctx.strokeStyle = '#dc2626'; // 深红色
+    ctx.strokeStyle = '#ef4444'; // 红色
     ctx.lineWidth = 3;
-    ctx.beginPath();
-    for (let i = 0; i <= totalPoints; i++) {
-      const t = i / totalPoints;
-      const x = startX + t * drawLength;
-      const angle = (t * numTwists * 2 * Math.PI) + (twistAngle * Math.PI / 180);
-      const offset = Math.sin(angle) * (outerDiameter - innerDiameter) / 4;
-      const y = centerY + offset * scale - (innerDiameter / 2) * scale;
-      
-      if (i === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
-      }
-    }
-    ctx.stroke();
     
-    // 绘制下边界（螺旋）
-    ctx.beginPath();
-    for (let i = 0; i <= totalPoints; i++) {
-      const t = i / totalPoints;
-      const x = startX + t * drawLength;
-      const angle = (t * numTwists * 2 * Math.PI) + (twistAngle * Math.PI / 180);
-      const offset = Math.sin(angle) * (outerDiameter - innerDiameter) / 4;
-      const y = centerY + offset * scale + (innerDiameter / 2) * scale;
+    if (actualIsTwisted) {
+      // 绘制螺旋扭曲的内管 - 增加点数使曲线更平滑
+      const numTwists = Math.ceil(length / twistPitch);
+      const pointsPerTwist = 100; // 增加点数
+      const totalPoints = numTwists * pointsPerTwist;
       
-      if (i === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
+      // 绘制上边界（螺旋）
+      ctx.strokeStyle = '#dc2626'; // 深红色
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      for (let i = 0; i <= totalPoints; i++) {
+        const t = i / totalPoints;
+        const x = startX + t * drawLength;
+        const angle = (t * numTwists * 2 * Math.PI) + (twistAngle * Math.PI / 180);
+        const offset = Math.sin(angle) * (outerDiameter - innerDiameter) / 4;
+        const y = tubeCenterY + offset * scale - (innerDiameter / 2) * scale;
+        
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
       }
-    }
-    ctx.stroke();
-    
-    // 添加内管填充以便更好看清
-    ctx.fillStyle = 'rgba(239, 68, 68, 0.15)';
-    ctx.beginPath();
-    for (let i = 0; i <= totalPoints; i++) {
-      const t = i / totalPoints;
-      const x = startX + t * drawLength;
-      const angle = (t * numTwists * 2 * Math.PI) + (twistAngle * Math.PI / 180);
-      const offset = Math.sin(angle) * (outerDiameter - innerDiameter) / 4;
-      const topY = centerY + offset * scale - (innerDiameter / 2) * scale;
-      const bottomY = centerY + offset * scale + (innerDiameter / 2) * scale;
+      ctx.stroke();
       
-      if (i === 0) {
-        ctx.moveTo(x, topY);
-      } else {
-        ctx.lineTo(x, topY);
+      // 绘制下边界（螺旋）
+      ctx.beginPath();
+      for (let i = 0; i <= totalPoints; i++) {
+        const t = i / totalPoints;
+        const x = startX + t * drawLength;
+        const angle = (t * numTwists * 2 * Math.PI) + (twistAngle * Math.PI / 180);
+        const offset = Math.sin(angle) * (outerDiameter - innerDiameter) / 4;
+        const y = tubeCenterY + offset * scale + (innerDiameter / 2) * scale;
+        
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
       }
+      ctx.stroke();
+      
+      // 添加内管填充以便更好看清
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.15)';
+      ctx.beginPath();
+      for (let i = 0; i <= totalPoints; i++) {
+        const t = i / totalPoints;
+        const x = startX + t * drawLength;
+        const angle = (t * numTwists * 2 * Math.PI) + (twistAngle * Math.PI / 180);
+        const offset = Math.sin(angle) * (outerDiameter - innerDiameter) / 4;
+        const topY = tubeCenterY + offset * scale - (innerDiameter / 2) * scale;
+        const bottomY = tubeCenterY + offset * scale + (innerDiameter / 2) * scale;
+        
+        if (i === 0) {
+          ctx.moveTo(x, topY);
+        } else {
+          ctx.lineTo(x, topY);
+        }
+      }
+      for (let i = totalPoints; i >= 0; i--) {
+        const t = i / totalPoints;
+        const x = startX + t * drawLength;
+        const angle = (t * numTwists * 2 * Math.PI) + (twistAngle * Math.PI / 180);
+        const offset = Math.sin(angle) * (outerDiameter - innerDiameter) / 4;
+        const bottomY = tubeCenterY + offset * scale + (innerDiameter / 2) * scale;
+        ctx.lineTo(x, bottomY);
+      }
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      // 绘制直管
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(startX, tubeCenterY - (innerDiameter / 2) * scale);
+      ctx.lineTo(endX, tubeCenterY - (innerDiameter / 2) * scale);
+      ctx.moveTo(startX, tubeCenterY + (innerDiameter / 2) * scale);
+      ctx.lineTo(endX, tubeCenterY + (innerDiameter / 2) * scale);
+      ctx.stroke();
+      
+      // 添加内管填充
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.15)';
+      ctx.fillRect(startX, tubeCenterY - (innerDiameter / 2) * scale, drawLength, innerDiameter * scale);
     }
-    for (let i = totalPoints; i >= 0; i--) {
-      const t = i / totalPoints;
-      const x = startX + t * drawLength;
-      const angle = (t * numTwists * 2 * Math.PI) + (twistAngle * Math.PI / 180);
-      const offset = Math.sin(angle) * (outerDiameter - innerDiameter) / 4;
-      const bottomY = centerY + offset * scale + (innerDiameter / 2) * scale;
-      ctx.lineTo(x, bottomY);
-    }
-    ctx.closePath();
-    ctx.fill();
-  } else {
-    // 绘制直管
-    ctx.strokeStyle = '#ef4444';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(startX, centerY - (innerDiameter / 2) * scale);
-    ctx.lineTo(endX, centerY - (innerDiameter / 2) * scale);
-    ctx.moveTo(startX, centerY + (innerDiameter / 2) * scale);
-    ctx.lineTo(endX, centerY + (innerDiameter / 2) * scale);
-    ctx.stroke();
-    
-    // 添加内管填充
-    ctx.fillStyle = 'rgba(239, 68, 68, 0.15)';
-    ctx.fillRect(startX, centerY - (innerDiameter / 2) * scale, drawLength, innerDiameter * scale);
   }
   
   // 添加几何标签 - 增大字体
@@ -174,14 +167,19 @@ export function drawSideView(canvas, params) {
   ctx.font = '13px sans-serif';
   ctx.fillText(`外管直径: ${(outerDiameter * 1000).toFixed(1)} mm`, startX, height - 35);
   ctx.fillText(`内管直径: ${(innerDiameter * 1000).toFixed(1)} mm`, startX, height - 55);
+  ctx.fillText(`内管数量: ${innerTubeCount} 根`, startX, height - 75);
   
-  if (isTwisted) {
+  if (actualIsTwisted) {
     ctx.fillStyle = '#dc2626';
     ctx.font = 'bold 13px sans-serif';
     ctx.fillText(`麻花管模式`, endX - 120, height - 15);
     ctx.font = '12px sans-serif';
     ctx.fillText(`节距: ${twistPitch.toFixed(2)} m`, endX - 120, height - 35);
     ctx.fillText(`角度: ${twistAngle}°`, endX - 120, height - 55);
+  } else {
+    ctx.fillStyle = '#6b7280';
+    ctx.font = '12px sans-serif';
+    ctx.fillText(`光管模式`, endX - 120, height - 15);
   }
 
   // 在同一张图上展示进出口温度与关键计算结果
@@ -255,97 +253,203 @@ export function drawFrontView(canvas, params) {
   const {
     innerDiameter = 0.02,
     outerDiameter = 0.04,
+    innerTubeCount = 1,
+    innerTubeType = 'smooth',
     isTwisted = false,
-    twistAngle = 45
+    twistAngle = 45,
+    passCount = 1,
+    outerTubeCountPerPass = 1
   } = params;
+  
+  const actualIsTwisted = innerTubeType === 'twisted' || isTwisted;
 
   const ctx = canvas.getContext('2d');
-  const width = canvas.width;
-  const height = canvas.height;
   
-  // 清除画布
-  ctx.clearRect(0, 0, width, height);
+  // 获取canvas的显示尺寸（CSS尺寸）
+  // 因为我们已经通过scale处理了设备像素比，所以绘制时应该使用显示尺寸
+  const displayWidth = parseFloat(canvas.style.width) || canvas.clientWidth || 600;
+  const displayHeight = parseFloat(canvas.style.height) || canvas.clientHeight || 600;
+  const width = displayWidth;
+  const height = displayHeight;
   
+  // 清除画布（使用像素尺寸清除）
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  // 图形中心点：放在画布正中央（使用显示尺寸）
   const centerX = width / 2;
   const centerY = height / 2;
-  const maxRadius = Math.min(width, height) * 0.4;
-  const scale = maxRadius / (outerDiameter / 2);
   
-  // 绘制外管（圆形）
-  ctx.strokeStyle = '#3b82f6';
-  ctx.lineWidth = 3;
+  // 计算缩放比例，确保整个图形（包括标注和可能的延伸）都能显示
+  const outerRadius = outerDiameter / 2;
+  
+  // 计算安全的最大半径，确保图形完全在可见区域内
+  // 考虑标注空间：顶部、底部、左右都需要留出空间
+  const topSpace = 60;    // 顶部用于标题和标注
+  const bottomSpace = 120; // 底部用于参数标注
+  const sideSpace = 100;   // 左右用于尺寸标注
+  const safeMargin = 20;   // 额外的安全边距
+  
+  // 计算可用的绘图区域
+  const availableWidth = width - sideSpace * 2 - safeMargin * 2;
+  const availableHeight = height - topSpace - bottomSpace - safeMargin * 2;
+  const availableSize = Math.min(availableWidth, availableHeight);
+  
+  // 使用保守的缩放（60%），确保图形完全在可见区域内
+  const maxRadius = (availableSize / 2) * 0.60;
+  const scale = Math.max(0.1, maxRadius / outerRadius);
+  
+  // 绘制外管（圆形）- 添加填充以便更好区分
+  ctx.fillStyle = 'rgba(59, 130, 246, 0.1)';
   ctx.beginPath();
-  ctx.arc(centerX, centerY, (outerDiameter / 2) * scale, 0, 2 * Math.PI);
+  ctx.arc(centerX, centerY, outerRadius * scale, 0, 2 * Math.PI);
+  ctx.fill();
+  
+  ctx.strokeStyle = '#3b82f6';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, outerRadius * scale, 0, 2 * Math.PI);
   ctx.stroke();
   
-  // 绘制内管
-  ctx.strokeStyle = '#ef4444';
-  ctx.lineWidth = 3;
+  // 绘制多根内管（前视图：圆形排列）
+  // 计算内管的排列位置（圆形排列）
+  // 确保内管不会重叠，根据内管数量调整排列半径
+  const innerTubeRadius = (innerDiameter / 2) * scale;
+  const outerRadiusScaled = outerRadius * scale;
   
-  if (isTwisted) {
-    // 绘制椭圆形（扭曲后的横截面）
-    const a = (innerDiameter / 2) * scale;
-    const b = a * Math.cos(twistAngle * Math.PI / 180);
+  // 计算合适的排列半径，确保内管不重叠且不超出外管
+  let arrangementRadius;
+  if (innerTubeCount === 1) {
+    // 单根内管居中
+    arrangementRadius = 0;
+  } else {
+    // 多根内管：计算合适的排列半径
+    const minRadius = innerTubeRadius * 1.5; // 最小半径，确保不重叠
+    const maxRadius = outerRadiusScaled - innerTubeRadius * 1.2; // 最大半径，确保不超出外管
+    arrangementRadius = Math.min(maxRadius, Math.max(minRadius, outerRadiusScaled * 0.5));
+  }
+  
+  const angleStep = innerTubeCount > 0 ? (2 * Math.PI) / innerTubeCount : 0;
+  
+  for (let i = 0; i < innerTubeCount; i++) {
+    const angle = i * angleStep - Math.PI / 2; // 从顶部开始排列
+    const tubeX = centerX + Math.cos(angle) * arrangementRadius;
+    const tubeY = centerY + Math.sin(angle) * arrangementRadius;
     
-    ctx.save();
-    ctx.translate(centerX, centerY);
-    ctx.rotate(twistAngle * Math.PI / 180);
-    ctx.beginPath();
-    ctx.ellipse(0, 0, a, b, 0, 0, 2 * Math.PI);
-    ctx.stroke();
-    ctx.restore();
+    // 添加内管填充
+    ctx.fillStyle = 'rgba(239, 68, 68, 0.2)';
     
+    if (actualIsTwisted) {
+      // 绘制椭圆形（扭曲后的横截面）
+      const a = innerTubeRadius;
+      const b = a * Math.cos(twistAngle * Math.PI / 180);
+      
+      ctx.save();
+      ctx.translate(tubeX, tubeY);
+      ctx.rotate(twistAngle * Math.PI / 180 + angle);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, a, b, 0, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      ctx.restore();
+    } else {
+      // 绘制圆形（直管）
+      ctx.beginPath();
+      ctx.arc(tubeX, tubeY, innerTubeRadius, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+  }
+  
+  if (actualIsTwisted && innerTubeCount > 0) {
     // 绘制螺旋指示线
     ctx.strokeStyle = '#f59e0b';
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 1.5;
     ctx.setLineDash([5, 5]);
     ctx.beginPath();
-    ctx.arc(centerX, centerY, (outerDiameter / 2) * scale * 0.7, 0, 2 * Math.PI);
+    ctx.arc(centerX, centerY, outerRadiusScaled * 0.7, 0, 2 * Math.PI);
     ctx.stroke();
     ctx.setLineDash([]);
-  } else {
-    // 绘制圆形（直管）
-    ctx.beginPath();
-    ctx.arc(centerX, centerY, (innerDiameter / 2) * scale, 0, 2 * Math.PI);
-    ctx.stroke();
   }
   
   // 添加尺寸标注
   ctx.strokeStyle = '#6b7280';
-  ctx.lineWidth = 1;
+  ctx.lineWidth = 1.5;
   ctx.fillStyle = '#374151';
-  ctx.font = '11px sans-serif';
+  ctx.font = 'bold 12px sans-serif';
   
-  // 外管直径标注
-  const outerRadius = (outerDiameter / 2) * scale;
+  // 外管直径标注（上方，居中显示）
+  const outerRadiusScaledForLabel = outerRadius * scale;
+  const labelY = Math.max(centerY - outerRadiusScaledForLabel - 20, 30); // 确保不超出顶部
   ctx.beginPath();
-  ctx.moveTo(centerX, centerY - outerRadius - 15);
-  ctx.lineTo(centerX, centerY - outerRadius);
-  ctx.moveTo(centerX - outerRadius - 20, centerY);
-  ctx.lineTo(centerX - outerRadius, centerY);
+  ctx.moveTo(centerX, centerY - outerRadiusScaledForLabel);
+  ctx.lineTo(centerX, labelY + 5);
+  ctx.moveTo(centerX - 30, labelY);
+  ctx.lineTo(centerX + 30, labelY);
   ctx.stroke();
-  ctx.fillText(`Dₒ = ${(outerDiameter * 1000).toFixed(1)} mm`, centerX - outerRadius - 25, centerY + 5);
+  ctx.textAlign = 'center';
+  ctx.fillText(`Dₒ = ${(outerDiameter * 1000).toFixed(1)} mm`, centerX, labelY - 5);
+  ctx.textAlign = 'left';
   
-  // 内管直径标注
-  const innerRadius = (innerDiameter / 2) * scale;
-  ctx.beginPath();
-  ctx.moveTo(centerX + innerRadius + 5, centerY);
-  ctx.lineTo(centerX + innerRadius + 20, centerY);
-  ctx.stroke();
-  ctx.fillText(`Dᵢ = ${(innerDiameter * 1000).toFixed(1)} mm`, centerX + innerRadius + 25, centerY + 5);
+  // 内管直径标注（如果只有一根内管，标注在右侧）
+  if (innerTubeCount === 1) {
+    const maxLabelX = width - 20; // 确保不超出右边界
+    const labelX = Math.min(centerX + innerTubeRadius + 25, maxLabelX - 80);
+    ctx.beginPath();
+    ctx.moveTo(centerX + innerTubeRadius, centerY);
+    ctx.lineTo(labelX, centerY);
+    ctx.moveTo(labelX, centerY - 5);
+    ctx.lineTo(labelX, centerY + 5);
+    ctx.stroke();
+    // 确保文字不超出边界
+    ctx.fillText(`Dᵢ = ${(innerDiameter * 1000).toFixed(1)} mm`, labelX + 5, centerY + 5);
+  }
   
-  if (isTwisted) {
+  // 添加主要尺寸和参数标注
+  ctx.fillStyle = '#374151';
+  ctx.font = 'bold 14px sans-serif';
+  ctx.textAlign = 'center';
+  
+  // 标题（顶部居中，确保在可见区域内）
+  ctx.fillText('单管截面图', centerX, 20);
+  
+  // 主要尺寸标注（底部左侧，确保在可见区域内）
+  ctx.textAlign = 'left';
+  ctx.font = '12px sans-serif';
+  ctx.fillStyle = '#1f2937';
+  const bottomStartY = height - 130; // 从底部向上130px开始，确保不超出
+  let yPos = bottomStartY;
+  ctx.fillText(`外管直径 Dₒ = ${(outerDiameter * 1000).toFixed(1)} mm`, 20, yPos);
+  yPos += 18;
+  ctx.fillText(`内管直径 Dᵢ = ${(innerDiameter * 1000).toFixed(1)} mm`, 20, yPos);
+  yPos += 18;
+  ctx.fillText(`内管数量: ${innerTubeCount} 根`, 20, yPos);
+  yPos += 18;
+  ctx.fillText(`流程数量: ${passCount} 个`, 20, yPos);
+  yPos += 18;
+  ctx.fillText(`每流程外管数: ${outerTubeCountPerPass} 根`, 20, yPos);
+  
+  // 内管类型标注（底部右侧，确保在可见区域内）
+  ctx.textAlign = 'right';
+  yPos = bottomStartY;
+  const rightTextX = width - 20; // 确保不超出右边界
+  if (actualIsTwisted) {
     ctx.fillStyle = '#dc2626';
     ctx.font = 'bold 12px sans-serif';
-    ctx.fillText('麻花管', centerX - 30, height - 10);
+    ctx.fillText('麻花管', rightTextX, yPos);
     ctx.fillStyle = '#6b7280';
-    ctx.font = '10px sans-serif';
-    ctx.fillText(`角度: ${twistAngle}°`, centerX - 25, height - 25);
+    ctx.font = '11px sans-serif';
+    yPos += 18;
+    ctx.fillText(`螺旋角度: ${twistAngle}°`, rightTextX, yPos);
   } else {
     ctx.fillStyle = '#6b7280';
     ctx.font = '12px sans-serif';
-    ctx.fillText('直管', centerX - 20, height - 10);
+    ctx.fillText('光管', rightTextX, yPos);
   }
+  ctx.textAlign = 'left';
 }
 
 /**
@@ -353,22 +457,35 @@ export function drawFrontView(canvas, params) {
  * @param {Object} params - 参数对象
  */
 export function updateVisualization(params) {
-  const sideCanvas = document.getElementById('side-view-canvas');
-  if (!sideCanvas) return;
+  const frontCanvas = document.getElementById('front-view-canvas');
+  if (!frontCanvas) return;
 
   // 设置 Canvas 尺寸
   const setCanvasSize = (canvas) => {
     const rect = canvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = rect.width * dpr || 1;
-    canvas.height = rect.height * dpr || 1;
+    // 确保canvas有最小尺寸
+    const minWidth = 600;
+    const minHeight = 600;
+    const displayWidth = Math.max(rect.width || minWidth, minWidth);
+    const displayHeight = Math.max(rect.height || minHeight, minHeight);
+    
+    // 设置实际像素尺寸（考虑设备像素比）
+    canvas.width = displayWidth * dpr;
+    canvas.height = displayHeight * dpr;
+    
+    // 设置CSS显示尺寸
+    canvas.style.width = displayWidth + 'px';
+    canvas.style.height = displayHeight + 'px';
+    
+    // 缩放上下文以匹配设备像素比
     const ctx = canvas.getContext('2d');
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.scale(dpr, dpr);
   };
 
-  setCanvasSize(sideCanvas);
+  setCanvasSize(frontCanvas);
 
-  // 单张图：在侧视图上绘制几何、温度和计算结果
-  drawSideView(sideCanvas, params);
+  // 只显示前视图（截面图）
+  drawFrontView(frontCanvas, params);
 }
 

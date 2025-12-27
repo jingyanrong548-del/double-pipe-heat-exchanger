@@ -123,22 +123,25 @@ export function calculateTwistedTubeEnhancementFactor(twistPitch, twistAngle, in
  * @param {number} length - 管长 (m)
  * @param {number} twistPitch - 螺旋节距 (m)
  * @param {number} twistAngle - 螺旋角度 (°)
+ * @param {number} innerTubeCount - 内管数量（默认1）
  * @returns {number} 实际传热面积 (m²)
  */
-export function calculateTwistedTubeArea(innerDiameter, length, twistPitch, twistAngle) {
-  // 基础面积（直管）
-  const baseArea = Math.PI * innerDiameter * length;
+export function calculateTwistedTubeArea(innerDiameter, length, twistPitch, twistAngle, innerTubeCount = 1) {
+  // 基础面积（单根直管）
+  const baseAreaPerTube = Math.PI * innerDiameter * length;
   
   // 螺旋增加的面积
   const numTwists = length / twistPitch;
   const angleRad = twistAngle * Math.PI / 180;
   const spiralLength = length / Math.cos(angleRad);
-  const spiralArea = Math.PI * innerDiameter * spiralLength;
+  const spiralAreaPerTube = Math.PI * innerDiameter * spiralLength;
   
   // 实际面积介于基础面积和螺旋面积之间
-  const areaIncrease = (spiralArea - baseArea) * 0.3; // 考虑实际效果
+  const areaIncreasePerTube = (spiralAreaPerTube - baseAreaPerTube) * 0.3; // 考虑实际效果
+  const areaPerTube = baseAreaPerTube + areaIncreasePerTube;
   
-  return baseArea + areaIncrease;
+  // 多根内管的总面积
+  return areaPerTube * innerTubeCount;
 }
 
 /**
@@ -150,6 +153,7 @@ export function calculateTwistedTubeArea(innerDiameter, length, twistPitch, twis
  * @param {number} hotFlowRate - 热流体质量流量 (kg/s)
  * @param {number} coldFlowRate - 冷流体质量流量 (kg/s)
  * @param {number} length - 管长 (m)
+ * @param {number} innerTubeCount - 内管数量（默认1）
  * @returns {number} 总传热系数基准值 (W/m²/K)
  */
 export async function calculateOverallHeatTransferCoefficientBase(
@@ -159,11 +163,15 @@ export async function calculateOverallHeatTransferCoefficientBase(
   outerDiameter,
   hotFlowRate,
   coldFlowRate,
-  length
+  length,
+  innerTubeCount = 1
 ) {
   // 计算内管（热流体）的对流传热系数
-  const innerArea = Math.PI * innerDiameter * length;
-  const innerVelocity = hotFlowRate / (hotProps.density * Math.PI * Math.pow(innerDiameter / 2, 2));
+  // 多根内管时，流量平均分配到每根内管
+  const singleInnerArea = Math.PI * innerDiameter * length;
+  const totalInnerArea = singleInnerArea * innerTubeCount;
+  const flowRatePerTube = hotFlowRate / innerTubeCount;
+  const innerVelocity = flowRatePerTube / (hotProps.density * Math.PI * Math.pow(innerDiameter / 2, 2));
   const innerRe = calculateReynoldsNumber(
     hotProps.density,
     innerVelocity,
@@ -179,8 +187,17 @@ export async function calculateOverallHeatTransferCoefficientBase(
   );
 
   // 计算环形空间（冷流体）的对流传热系数
-  const hydraulicDiameter = outerDiameter - innerDiameter; // 环形空间的当量直径
-  const annulusArea = Math.PI * (Math.pow(outerDiameter / 2, 2) - Math.pow(innerDiameter / 2, 2));
+  // 多根内管时，环形空间的当量直径需要重新计算
+  const totalInnerCrossSection = innerTubeCount * Math.PI * Math.pow(innerDiameter / 2, 2);
+  const annulusArea = Math.PI * Math.pow(outerDiameter / 2, 2) - totalInnerCrossSection;
+  
+  // 当量直径：对于多根内管的环形空间，使用简化公式
+  // Dh = 4 * 流通面积 / 湿周
+  // 湿周 = 外管内周长 + 所有内管外周长
+  const outerPerimeter = Math.PI * outerDiameter;
+  const innerPerimeter = innerTubeCount * Math.PI * innerDiameter;
+  const hydraulicDiameter = (4 * annulusArea) / (outerPerimeter + innerPerimeter);
+  
   const annulusVelocity = coldFlowRate / (coldProps.density * annulusArea);
   const annulusRe = calculateReynoldsNumber(
     coldProps.density,
@@ -198,7 +215,7 @@ export async function calculateOverallHeatTransferCoefficientBase(
   // 计算总传热系数（基于外管面积）
   // 1/U = 1/(hi*Ai/Ao) + 1/ho + R_wall (忽略管壁热阻)
   const outerArea = Math.PI * outerDiameter * length;
-  const areaRatio = innerArea / outerArea;
+  const areaRatio = totalInnerArea / outerArea;
   
   // 简化计算：忽略管壁热阻
   const U_base = 1 / (1 / (hi * areaRatio) + 1 / ho);
@@ -219,7 +236,8 @@ export async function calculateOverallHeatTransferCoefficient(
   length,
   isTwisted = false,
   twistPitch = 0.1,
-  twistAngle = 45
+  twistAngle = 45,
+  innerTubeCount = 1
 ) {
   const U_base = await calculateOverallHeatTransferCoefficientBase(
     hotProps,
@@ -228,7 +246,8 @@ export async function calculateOverallHeatTransferCoefficient(
     outerDiameter,
     hotFlowRate,
     coldFlowRate,
-    length
+    length,
+    innerTubeCount
   );
 
   if (!isTwisted) {
@@ -314,10 +333,17 @@ export async function calculateHeatExchanger(params) {
     length,
     flowType,
     givenU, // 可选：给定的传热系数
-    isTwisted = false, // 是否为麻花管
+    innerTubeCount = 1, // 内管数量
+    innerTubeType = 'smooth', // 内管类型：'smooth' 或 'twisted'
+    isTwisted = false, // 是否为麻花管（从innerTubeType推导）
     twistPitch = 0.1, // 螺旋节距
-    twistAngle = 45 // 螺旋角度
+    twistAngle = 45, // 螺旋角度
+    passCount = 1, // 流程数量
+    outerTubeCountPerPass = 1 // 每流程外管数量
   } = params;
+  
+  // 确保isTwisted与innerTubeType一致
+  const actualIsTwisted = innerTubeType === 'twisted' || isTwisted;
 
   try {
     // 1. 计算 LMTD
@@ -357,31 +383,36 @@ export async function calculateHeatExchanger(params) {
         hotFlowRate,
         coldFlowRate,
         length,
-        isTwisted,
+        actualIsTwisted,
         twistPitch,
-        twistAngle
+        twistAngle,
+        innerTubeCount
       );
     }
 
-    // 4. 计算换热面积
-    let A;
-    if (isTwisted) {
-      // 麻花管使用实际面积估算
-      A = calculateTwistedTubeArea(innerDiameter, length, twistPitch, twistAngle);
+    // 4. 计算单管换热面积
+    let singleTubeArea;
+    if (actualIsTwisted) {
+      // 麻花管使用实际面积估算（单根外管内的面积）
+      singleTubeArea = calculateTwistedTubeArea(innerDiameter, length, twistPitch, twistAngle, innerTubeCount);
     } else {
-      // 直管使用基于 Q、LMTD、U 的面积
-      A = calculateHeatTransferArea(Q, lmtd, U);
+      // 直管：多根内管时，单根外管内的面积为单根内管面积乘以内管数量
+      const singleInnerTubeArea = calculateHeatTransferArea(Q, lmtd, U) / (innerTubeCount * passCount * outerTubeCountPerPass);
+      singleTubeArea = singleInnerTubeArea * innerTubeCount;
     }
+    
+    // 总换热面积 = 单管面积 × 流程数量 × 每流程外管数量
+    const totalArea = singleTubeArea * passCount * outerTubeCountPerPass;
     
     // 基于 Q 和 LMTD 反算一个 U_check（用于 sanity check）
     let U_check = null;
-    if (A > 0 && lmtd > 0) {
-      U_check = Q / (A * lmtd);
+    if (totalArea > 0 && lmtd > 0) {
+      U_check = Q / (totalArea * lmtd);
     }
 
     // 计算增强系数（如果是麻花管）
     let enhancementFactor = 1.0;
-    if (isTwisted) {
+    if (actualIsTwisted) {
       enhancementFactor = calculateTwistedTubeEnhancementFactor(twistPitch, twistAngle, innerDiameter);
     }
 
@@ -389,9 +420,14 @@ export async function calculateHeatExchanger(params) {
       heatTransferRate: Q / 1000, // 转换为 kW
       lmtd: lmtd,
       overallHeatTransferCoefficient: U,
-      heatTransferArea: A,
+      heatTransferArea: totalArea,
+      singleTubeArea: singleTubeArea,
       overallHeatTransferCoefficientCheck: U_check,
-      isTwisted: isTwisted,
+      innerTubeCount: innerTubeCount,
+      innerTubeType: innerTubeType,
+      passCount: passCount,
+      outerTubeCountPerPass: outerTubeCountPerPass,
+      isTwisted: actualIsTwisted,
       enhancementFactor: enhancementFactor,
       success: true
     };

@@ -3,6 +3,8 @@
  * 提供实际应用中的典型参数，方便调试和测试
  */
 
+import { updateVisualization } from './visualization.js';
+
 /**
  * 直管换热器示例案例
  * 典型的水-水换热器
@@ -28,10 +30,14 @@ export const straightTubeExample = {
   length: 3.0,            // 3米管长
   flowType: 'counter',    // 逆流
   
-  // 麻花管参数
+  // 内管参数
+  innerTubeCount: 1,      // 1根内管
+  innerTubeType: 'smooth', // 光管
   isTwisted: false,
   twistPitch: 0.1,
   twistAngle: 45,
+  passCount: 1,           // 1个流程
+  outerTubeCountPerPass: 1, // 每流程1根外管
   
   // 传热系数（留空自动计算）
   givenU: null
@@ -62,10 +68,14 @@ export const twistedTubeExample = {
   length: 2.5,            // 2.5米管长（麻花管可以用更短的长度）
   flowType: 'counter',    // 逆流
   
-  // 麻花管参数
+  // 内管参数
+  innerTubeCount: 1,      // 1根内管
+  innerTubeType: 'twisted', // 麻花管
   isTwisted: true,
   twistPitch: 0.08,       // 8cm 节距（较紧密的螺旋）
   twistAngle: 50,         // 50度角度
+  passCount: 1,           // 1个流程
+  outerTubeCountPerPass: 1, // 每流程1根外管
   
   // 传热系数（留空自动计算）
   givenU: null
@@ -95,10 +105,14 @@ export const refrigerantExample = {
   length: 4.0,            // 4米管长
   flowType: 'counter',
   
-  // 麻花管参数
+  // 内管参数
+  innerTubeCount: 1,      // 1根内管
+  innerTubeType: 'smooth', // 光管
   isTwisted: false,
   twistPitch: 0.1,
   twistAngle: 45,
+  passCount: 1,           // 1个流程
+  outerTubeCountPerPass: 1, // 每流程1根外管
   
   givenU: null
 };
@@ -141,34 +155,56 @@ export function loadExampleToForm(exampleData) {
   const flowTypeSelect = document.getElementById('flow-type');
   const heatTransferCoefficientInput = document.getElementById('heat-transfer-coefficient');
   
-  if (innerDiameterInput) innerDiameterInput.value = exampleData.innerDiameter;
-  if (outerDiameterInput) outerDiameterInput.value = exampleData.outerDiameter;
+  if (innerDiameterInput) innerDiameterInput.value = exampleData.innerDiameter * 1000; // 转换为mm
+  if (outerDiameterInput) outerDiameterInput.value = exampleData.outerDiameter * 1000; // 转换为mm
   if (lengthInput) lengthInput.value = exampleData.length;
   if (flowTypeSelect) flowTypeSelect.value = exampleData.flowType;
   if (heatTransferCoefficientInput) heatTransferCoefficientInput.value = exampleData.givenU || '';
   
-  // 麻花管参数
-  const twistedModeCheckbox = document.getElementById('twisted-tube-mode');
+  // 内管数量和类型
+  const innerTubeCountSelect = document.getElementById('inner-tube-count');
+  const innerTubeTypeSelect = document.getElementById('inner-tube-type');
+  const passCountSelect = document.getElementById('pass-count');
+  const outerTubeCountSelect = document.getElementById('outer-tube-count-per-pass');
   const twistedParamsDiv = document.getElementById('twisted-tube-params');
   const twistPitchInput = document.getElementById('twist-pitch');
   const twistAngleInput = document.getElementById('twist-angle');
   
-  if (twistedModeCheckbox) {
-    twistedModeCheckbox.checked = exampleData.isTwisted;
+  if (innerTubeCountSelect) {
+    innerTubeCountSelect.value = exampleData.innerTubeCount || 1;
+  }
+  if (innerTubeTypeSelect) {
+    innerTubeTypeSelect.value = exampleData.innerTubeType || (exampleData.isTwisted ? 'twisted' : 'smooth');
+    // 更新麻花管参数显示
     if (twistedParamsDiv) {
-      if (exampleData.isTwisted) {
+      if (innerTubeTypeSelect.value === 'twisted') {
         twistedParamsDiv.classList.remove('hidden');
       } else {
         twistedParamsDiv.classList.add('hidden');
       }
     }
   }
-  if (twistPitchInput) twistPitchInput.value = exampleData.twistPitch;
-  if (twistAngleInput) twistAngleInput.value = exampleData.twistAngle;
+  if (passCountSelect) {
+    passCountSelect.value = exampleData.passCount || 1;
+  }
+  if (outerTubeCountSelect) {
+    outerTubeCountSelect.value = exampleData.outerTubeCountPerPass || 1;
+  }
+  if (twistPitchInput) twistPitchInput.value = exampleData.twistPitch || 0.1;
+  if (twistAngleInput) twistAngleInput.value = exampleData.twistAngle || 45;
   
   // 触发 change 事件以更新可视化
-  if (twistedModeCheckbox) {
-    twistedModeCheckbox.dispatchEvent(new Event('change'));
+  if (innerTubeTypeSelect) {
+    innerTubeTypeSelect.dispatchEvent(new Event('change'));
+  }
+  if (innerTubeCountSelect) {
+    innerTubeCountSelect.dispatchEvent(new Event('change'));
+  }
+  if (passCountSelect) {
+    passCountSelect.dispatchEvent(new Event('change'));
+  }
+  if (outerTubeCountSelect) {
+    outerTubeCountSelect.dispatchEvent(new Event('change'));
   }
   
   // 触发 input 事件以更新可视化
@@ -176,6 +212,20 @@ export function loadExampleToForm(exampleData) {
     if (input) {
       input.dispatchEvent(new Event('input'));
     }
+  });
+  
+  // 更新可视化
+  updateVisualization({
+    innerDiameter: exampleData.innerDiameter,
+    outerDiameter: exampleData.outerDiameter,
+    length: exampleData.length,
+    innerTubeCount: exampleData.innerTubeCount || 1,
+    innerTubeType: exampleData.innerTubeType || (exampleData.isTwisted ? 'twisted' : 'smooth'),
+    isTwisted: exampleData.isTwisted || false,
+    twistPitch: exampleData.twistPitch || 0.1,
+    twistAngle: exampleData.twistAngle || 45,
+    passCount: exampleData.passCount || 1,
+    outerTubeCountPerPass: exampleData.outerTubeCountPerPass || 1
   });
 }
 
