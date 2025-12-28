@@ -139,8 +139,7 @@ export const currentDebugExample = {
   hotTin: 105,
   hotTout: 45,
   hotFlowRate: null,  // 负荷输入法，由系统计算
-  hotPressure: null,  // kPa - 不输入，由饱和温度计算
-  hotSaturationTemp: 85,  // °C
+  hotPressure: 2927.8,  // kPa - 85°C对应的饱和压力（由CoolProp计算）
   
   // 冷流体参数（水，加热，在管内）
   coldFluid: 'Water',
@@ -202,7 +201,6 @@ export function loadExampleToForm(exampleData) {
   const hotToutInput = document.getElementById('hot-tout');
   const hotFlowRateInput = document.getElementById('hot-flowrate');
   const hotPressureInput = document.getElementById('hot-pressure');
-  const hotSaturationTempInput = document.getElementById('hot-saturation-temp');
   
   if (hotFluidSelect) hotFluidSelect.value = exampleData.hotFluid;
   if (hotProcessTypeSelect && exampleData.hotProcessType) hotProcessTypeSelect.value = exampleData.hotProcessType;
@@ -212,7 +210,6 @@ export function loadExampleToForm(exampleData) {
   if (hotToutInput) hotToutInput.value = exampleData.hotTout;
   if (hotFlowRateInput) hotFlowRateInput.value = exampleData.hotFlowRate || '';
   if (hotPressureInput) hotPressureInput.value = exampleData.hotPressure || '';
-  if (hotSaturationTempInput && exampleData.hotSaturationTemp) hotSaturationTempInput.value = exampleData.hotSaturationTemp;
   
   // 冷流体参数
   const coldFluidSelect = document.getElementById('cold-fluid');

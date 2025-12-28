@@ -100,8 +100,16 @@ export async function getProperty(fluid, property, input1, value1, input2, value
     if (!isFinite(value1) || value1 <= 0) {
       throw new Error(`输入参数1无效: ${input1} = ${value1}`);
     }
-    if (!isFinite(value2) || value2 <= 0) {
-      throw new Error(`输入参数2无效: ${input2} = ${value2}`);
+    // 对于干度Q，允许0和1（饱和液体和饱和蒸汽）
+    if (input2 === 'Q') {
+      if (!isFinite(value2) || value2 < 0 || value2 > 1) {
+        throw new Error(`输入参数2无效: ${input2} = ${value2} (干度必须在0-1之间)`);
+      }
+    } else {
+      // 对于其他参数（如T、P），必须大于0
+      if (!isFinite(value2) || value2 <= 0) {
+        throw new Error(`输入参数2无效: ${input2} = ${value2}`);
+      }
     }
     
     const result = CoolProp.PropsSI(property, input1, value1, input2, value2, fluid);
@@ -331,7 +339,18 @@ export async function getPropertyTPQ(fluid, property, temperature, pressure, qua
     }
     
     const CoolProp = await loadCoolProp();
-    const result = CoolProp.PropsSI(property, 'T', temperature, 'P', pressure, 'Q', quality, fluid);
+    // 对于两相流，使用T-Q查询（在饱和温度下）
+    // 如果quality是0或1，直接使用T-Q查询；否则需要先确定饱和温度
+    let result;
+    if (quality === 0 || quality === 1) {
+      // 饱和液体或饱和蒸汽，使用T-Q查询
+      result = CoolProp.PropsSI(property, 'T', temperature, 'Q', quality, fluid);
+    } else {
+      // 两相流，使用T-P-Q查询（但需要确保温度是饱和温度）
+      // 先获取饱和温度
+      const satTemp = await getSaturationTemperature(fluid, pressure);
+      result = CoolProp.PropsSI(property, 'T', satTemp, 'Q', quality, fluid);
+    }
     
     // 检查结果有效性
     if (isNaN(result) || !isFinite(result)) {
@@ -427,20 +446,20 @@ export async function getFluidPropertiesTwoPhase(fluid, temperature, pressure, q
       satTemp = temperature;
     }
     
-    // 查询饱和液体物性 (Q=0)
-    const liquidDensity = CoolProp.PropsSI('D', 'T', satTemp, 'P', pressure, 'Q', 0, fluid);
-    const liquidH = CoolProp.PropsSI('H', 'T', satTemp, 'P', pressure, 'Q', 0, fluid);
-    const liquidCp = CoolProp.PropsSI('C', 'T', satTemp, 'P', pressure, 'Q', 0, fluid);
-    const liquidK = CoolProp.PropsSI('L', 'T', satTemp, 'P', pressure, 'Q', 0, fluid);
-    const liquidMu = CoolProp.PropsSI('V', 'T', satTemp, 'P', pressure, 'Q', 0, fluid);
+    // 查询饱和液体物性 (Q=0) - 使用T-P查询，然后指定Q=0
+    const liquidDensity = CoolProp.PropsSI('D', 'T', satTemp, 'Q', 0, fluid);
+    const liquidH = CoolProp.PropsSI('H', 'T', satTemp, 'Q', 0, fluid);
+    const liquidCp = CoolProp.PropsSI('C', 'T', satTemp, 'Q', 0, fluid);
+    const liquidK = CoolProp.PropsSI('L', 'T', satTemp, 'Q', 0, fluid);
+    const liquidMu = CoolProp.PropsSI('V', 'T', satTemp, 'Q', 0, fluid);
     const liquidPr = (liquidCp * liquidMu) / liquidK;
     
-    // 查询饱和蒸汽物性 (Q=1)
-    const vaporDensity = CoolProp.PropsSI('D', 'T', satTemp, 'P', pressure, 'Q', 1, fluid);
-    const vaporH = CoolProp.PropsSI('H', 'T', satTemp, 'P', pressure, 'Q', 1, fluid);
-    const vaporCp = CoolProp.PropsSI('C', 'T', satTemp, 'P', pressure, 'Q', 1, fluid);
-    const vaporK = CoolProp.PropsSI('L', 'T', satTemp, 'P', pressure, 'Q', 1, fluid);
-    const vaporMu = CoolProp.PropsSI('V', 'T', satTemp, 'P', pressure, 'Q', 1, fluid);
+    // 查询饱和蒸汽物性 (Q=1) - 使用T-P查询，然后指定Q=1
+    const vaporDensity = CoolProp.PropsSI('D', 'T', satTemp, 'Q', 1, fluid);
+    const vaporH = CoolProp.PropsSI('H', 'T', satTemp, 'Q', 1, fluid);
+    const vaporCp = CoolProp.PropsSI('C', 'T', satTemp, 'Q', 1, fluid);
+    const vaporK = CoolProp.PropsSI('L', 'T', satTemp, 'Q', 1, fluid);
+    const vaporMu = CoolProp.PropsSI('V', 'T', satTemp, 'Q', 1, fluid);
     const vaporPr = (vaporCp * vaporMu) / vaporK;
     
     const liquidProps = {

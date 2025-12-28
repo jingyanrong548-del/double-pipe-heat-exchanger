@@ -837,6 +837,11 @@ export function calculateHeatTransferArea(heatTransferRate, lmtd, overallHeatTra
  * @param {number} length - 换热器长度 (m)
  * @param {string} flowType - 流动方式: 'counter' (逆流) 或 'parallel' (并流)
  * @param {number} numPoints - 计算点数（默认100）
+ * @param {Object} options - 可选参数
+ * @param {boolean} options.hotIsCondensation - 热流体是否为冷凝过程
+ * @param {number} options.hotSaturationTemp - 热流体饱和温度 (°C)，冷凝过程时必需
+ * @param {boolean} options.coldIsEvaporation - 冷流体是否为蒸发过程
+ * @param {number} options.coldSaturationTemp - 冷流体饱和温度 (°C)，蒸发过程时必需
  * @returns {Object} {positions: [位置数组 (m)], hotTemperatures: [热流体温度数组 (°C)], coldTemperatures: [冷流体温度数组 (°C)]}
  */
 export function calculateTemperatureDistribution(
@@ -846,39 +851,162 @@ export function calculateTemperatureDistribution(
   coldTout,
   length,
   flowType = 'counter',
-  numPoints = 100
+  numPoints = 100,
+  options = {}
 ) {
   const positions = [];
   const hotTemperatures = [];
   const coldTemperatures = [];
   
+  const {
+    hotIsCondensation = false,
+    hotSaturationTemp = null,
+    coldIsEvaporation = false,
+    coldSaturationTemp = null
+  } = options;
+  
   // 计算温度变化率
   const hotTempChange = hotTout - hotTin; // 负值（降温）
   const coldTempChange = coldTout - coldTin; // 正值（升温）
   
+  // 对于冷凝过程，判断是否有过热段、冷凝段、过冷段
+  let hotSuperheatStart = null; // 过热段开始位置比例
+  let hotSuperheatEnd = null;   // 过热段结束位置比例（冷凝段开始）
+  let hotCondensationEnd = null; // 冷凝段结束位置比例（过冷段开始）
+  
+  if (hotIsCondensation && hotSaturationTemp !== null) {
+    // 判断入口是否过热
+    const isInletSuperheated = hotTin > hotSaturationTemp;
+    // 判断出口是否过冷
+    const isOutletSubcooled = hotTout < hotSaturationTemp;
+    
+    if (isInletSuperheated && isOutletSubcooled) {
+      // 三段：过热蒸汽冷却 -> 冷凝 -> 过冷液体冷却
+      // 需要计算各段的长度比例（基于焓值或简化假设）
+      // 简化：假设过热段和过冷段各占20%，冷凝段占60%
+      hotSuperheatStart = 0;
+      hotSuperheatEnd = 0.2;
+      hotCondensationEnd = 0.8;
+    } else if (isInletSuperheated) {
+      // 两段：过热蒸汽冷却 -> 冷凝
+      hotSuperheatStart = 0;
+      hotSuperheatEnd = 0.3; // 假设过热段占30%
+      hotCondensationEnd = 1.0;
+    } else if (isOutletSubcooled) {
+      // 两段：冷凝 -> 过冷液体冷却
+      hotSuperheatStart = null;
+      hotSuperheatEnd = 0;
+      hotCondensationEnd = 0.7; // 假设冷凝段占70%
+    } else {
+      // 纯冷凝段
+      hotSuperheatStart = null;
+      hotSuperheatEnd = 0;
+      hotCondensationEnd = 1.0;
+    }
+  }
+  
+  // 对于蒸发过程，判断是否有过冷段、蒸发段、过热段
+  let coldSubcoolStart = null;
+  let coldSubcoolEnd = null;
+  let coldEvaporationEnd = null;
+  
+  if (coldIsEvaporation && coldSaturationTemp !== null) {
+    const isInletSubcooled = coldTin < coldSaturationTemp;
+    const isOutletSuperheated = coldTout > coldSaturationTemp;
+    
+    if (isInletSubcooled && isOutletSuperheated) {
+      // 三段：过冷液体加热 -> 蒸发 -> 过热蒸汽加热
+      coldSubcoolStart = 0;
+      coldSubcoolEnd = 0.2;
+      coldEvaporationEnd = 0.8;
+    } else if (isInletSubcooled) {
+      // 两段：过冷液体加热 -> 蒸发
+      coldSubcoolStart = 0;
+      coldSubcoolEnd = 0.3;
+      coldEvaporationEnd = 1.0;
+    } else if (isOutletSuperheated) {
+      // 两段：蒸发 -> 过热蒸汽加热
+      coldSubcoolStart = null;
+      coldSubcoolEnd = 0;
+      coldEvaporationEnd = 0.7;
+    } else {
+      // 纯蒸发段
+      coldSubcoolStart = null;
+      coldSubcoolEnd = 0;
+      coldEvaporationEnd = 1.0;
+    }
+  }
+  
   for (let i = 0; i <= numPoints; i++) {
     const x = (i / numPoints) * length; // 沿管长的位置 (m)
+    const ratio = i / numPoints; // 位置比例 (0-1)
     positions.push(x);
     
-    if (flowType === 'counter') {
-      // 逆流：热流体和冷流体从相反方向流动
-      // 热流体：从入口到出口线性变化（简化模型，假设物性不变）
-      const hotT = hotTin + (hotTempChange * i / numPoints);
-      hotTemperatures.push(hotT);
-      
-      // 冷流体：从出口到入口线性变化（逆流）
-      const coldT = coldTout - (coldTempChange * i / numPoints);
-      coldTemperatures.push(coldT);
+    // 计算热流体温度
+    let hotT;
+    if (hotIsCondensation && hotSaturationTemp !== null) {
+      if (hotSuperheatStart !== null && ratio <= hotSuperheatEnd) {
+        // 过热段：从入口温度线性下降到饱和温度
+        const superheatRatio = ratio / hotSuperheatEnd;
+        hotT = hotTin + (hotSaturationTemp - hotTin) * superheatRatio;
+      } else if (ratio <= hotCondensationEnd) {
+        // 冷凝段：温度保持在饱和温度
+        hotT = hotSaturationTemp;
+      } else {
+        // 过冷段：从饱和温度线性下降到出口温度
+        const subcoolRatio = (ratio - hotCondensationEnd) / (1 - hotCondensationEnd);
+        hotT = hotSaturationTemp + (hotTout - hotSaturationTemp) * subcoolRatio;
+      }
     } else {
-      // 并流：热流体和冷流体从同一方向流动
-      // 热流体：从入口到出口线性变化
-      const hotT = hotTin + (hotTempChange * i / numPoints);
-      hotTemperatures.push(hotT);
-      
-      // 冷流体：从入口到出口线性变化
-      const coldT = coldTin + (coldTempChange * i / numPoints);
-      coldTemperatures.push(coldT);
+      // 单相流：线性变化
+      hotT = hotTin + (hotTempChange * ratio);
     }
+    hotTemperatures.push(hotT);
+    
+    // 计算冷流体温度
+    let coldT;
+    if (flowType === 'counter') {
+      // 逆流：冷流体从出口到入口
+      const coldRatio = 1 - ratio; // 逆流时位置相反
+      
+      if (coldIsEvaporation && coldSaturationTemp !== null) {
+        if (coldSubcoolStart !== null && coldRatio <= coldSubcoolEnd) {
+          // 过冷段：从入口温度线性上升到饱和温度
+          const subcoolRatio = coldRatio / coldSubcoolEnd;
+          coldT = coldTin + (coldSaturationTemp - coldTin) * subcoolRatio;
+        } else if (coldRatio <= coldEvaporationEnd) {
+          // 蒸发段：温度保持在饱和温度
+          coldT = coldSaturationTemp;
+        } else {
+          // 过热段：从饱和温度线性上升到出口温度
+          const superheatRatio = (coldRatio - coldEvaporationEnd) / (1 - coldEvaporationEnd);
+          coldT = coldSaturationTemp + (coldTout - coldSaturationTemp) * superheatRatio;
+        }
+      } else {
+        // 单相流：线性变化
+        coldT = coldTout - (coldTempChange * ratio);
+      }
+    } else {
+      // 并流：冷流体从入口到出口
+      if (coldIsEvaporation && coldSaturationTemp !== null) {
+        if (coldSubcoolStart !== null && ratio <= coldSubcoolEnd) {
+          // 过冷段：从入口温度线性上升到饱和温度
+          const subcoolRatio = ratio / coldSubcoolEnd;
+          coldT = coldTin + (coldSaturationTemp - coldTin) * subcoolRatio;
+        } else if (ratio <= coldEvaporationEnd) {
+          // 蒸发段：温度保持在饱和温度
+          coldT = coldSaturationTemp;
+        } else {
+          // 过热段：从饱和温度线性上升到出口温度
+          const superheatRatio = (ratio - coldEvaporationEnd) / (1 - coldEvaporationEnd);
+          coldT = coldSaturationTemp + (coldTout - coldSaturationTemp) * superheatRatio;
+        }
+      } else {
+        // 单相流：线性变化
+        coldT = coldTin + (coldTempChange * ratio);
+      }
+    }
+    coldTemperatures.push(coldT);
   }
   
   return {
@@ -1112,11 +1240,10 @@ export async function calculateHeatExchanger(params) {
     hotTin,
     hotTout,
     hotFlowRate,
-    hotPressure = null,     // 压力 (kPa) - 如果为null，将从饱和温度计算
+    hotPressure = null,     // 压力 (kPa) - 必须输入
     hotProcessType = 'cooling',  // 'cooling'（冷却）, 'condensation'（冷凝）
     hotStateIn = null,      // 入口状态：0=液体，1=气体，0-1=两相（干度）
     hotStateOut = null,     // 出口状态：0=液体，1=气体，0-1=两相（干度）
-    hotSaturationTemp = null, // 饱和温度 (°C) - 用于计算压力
     // 向后兼容的旧参数
     hotPhaseIn = null,      // 已弃用，从hotStateIn推导
     hotPhaseOut = null,     // 已弃用，从hotStateOut推导
@@ -1208,83 +1335,16 @@ export async function calculateHeatExchanger(params) {
     coldPhaseOutConverted.quality = coldStateOut === 1 ? 0.95 : (coldStateOut === 0 ? 0.05 : 0.5); // 接近出口状态
   }
   
-  // 导入物性查询函数
-  const { getSaturationPressure, getSaturationTemperature } = await import('./coolprop_loader.js');
-  
-  let actualHotPressure = hotPressure;
-  let actualColdPressure = coldPressure;
-  let calculatedHotSaturationTemp = null;
-  let calculatedColdSaturationTemp = null;
-  
-  // 热流体：如果提供了压力，计算饱和温度；如果提供了饱和温度，计算压力
-  if (hotProcessType === 'condensation') {
-    if (hotPressure !== null && hotPressure !== undefined && hotPressure > 0 && 
-        (hotSaturationTemp === null || hotSaturationTemp === undefined || hotSaturationTemp <= 0)) {
-      // 输入了压力，计算饱和温度
-      try {
-        const pressurePa = hotPressure * 1000; // 转换为 Pa
-        const satTempK = await getSaturationTemperature(hotFluid, pressurePa);
-        calculatedHotSaturationTemp = satTempK - 273.15; // 转换为 °C
-        actualHotPressure = hotPressure; // 使用输入的压力
-      } catch (error) {
-        console.warn(`无法从压力计算热流体饱和温度: ${error.message}`);
-        throw new Error(`无法从压力计算热流体饱和温度: ${error.message}`);
-      }
-    } else if (hotSaturationTemp !== null && hotSaturationTemp !== undefined && hotSaturationTemp > 0 &&
-               (hotPressure === null || hotPressure === undefined || hotPressure <= 0)) {
-      // 输入了饱和温度，计算压力
-      try {
-        const satTempK = hotSaturationTemp + 273.15;
-        const satPressurePa = await getSaturationPressure(hotFluid, satTempK);
-        actualHotPressure = satPressurePa / 1000; // 转换为 kPa
-        calculatedHotSaturationTemp = hotSaturationTemp; // 使用输入的饱和温度
-      } catch (error) {
-        console.warn(`无法从饱和温度计算热流体压力: ${error.message}`);
-        throw new Error(`无法从饱和温度计算热流体压力: ${error.message}`);
-      }
-    } else if (hotPressure && hotSaturationTemp) {
-      // 两个都输入了（不应该发生，因为UI已经互斥）
-      throw new Error('热流体：不能同时输入压力和饱和温度，请只输入其中一个');
-    }
-  } else {
-    // 冷却模式：只使用压力
-    actualHotPressure = hotPressure || 101.325;
+  // 直接使用输入的压力（不再从饱和温度计算）
+  if (!hotPressure || hotPressure <= 0) {
+    throw new Error('热流体压力必须输入且大于0');
+  }
+  if (!coldPressure || coldPressure <= 0) {
+    throw new Error('冷流体压力必须输入且大于0');
   }
   
-  // 冷流体：如果提供了压力，计算饱和温度；如果提供了饱和温度，计算压力
-  if (coldProcessType === 'evaporation') {
-    if (coldPressure !== null && coldPressure !== undefined && coldPressure > 0 && 
-        (coldSaturationTemp === null || coldSaturationTemp === undefined || coldSaturationTemp <= 0)) {
-      // 输入了压力，计算饱和温度
-      try {
-        const pressurePa = coldPressure * 1000; // 转换为 Pa
-        const satTempK = await getSaturationTemperature(coldFluid, pressurePa);
-        calculatedColdSaturationTemp = satTempK - 273.15; // 转换为 °C
-        actualColdPressure = coldPressure; // 使用输入的压力
-      } catch (error) {
-        console.warn(`无法从压力计算冷流体饱和温度: ${error.message}`);
-        throw new Error(`无法从压力计算冷流体饱和温度: ${error.message}`);
-      }
-    } else if (coldSaturationTemp !== null && coldSaturationTemp !== undefined && coldSaturationTemp > 0 &&
-               (coldPressure === null || coldPressure === undefined || coldPressure <= 0)) {
-      // 输入了饱和温度，计算压力
-      try {
-        const satTempK = coldSaturationTemp + 273.15;
-        const satPressurePa = await getSaturationPressure(coldFluid, satTempK);
-        actualColdPressure = satPressurePa / 1000; // 转换为 kPa
-        calculatedColdSaturationTemp = coldSaturationTemp; // 使用输入的饱和温度
-      } catch (error) {
-        console.warn(`无法从饱和温度计算冷流体压力: ${error.message}`);
-        throw new Error(`无法从饱和温度计算冷流体压力: ${error.message}`);
-      }
-    } else if (coldPressure && coldSaturationTemp) {
-      // 两个都输入了（不应该发生，因为UI已经互斥）
-      throw new Error('冷流体：不能同时输入压力和饱和温度，请只输入其中一个');
-    }
-  } else {
-    // 冷却模式：只使用压力
-    actualColdPressure = coldPressure || 101.325;
-  }
+  const actualHotPressure = hotPressure;
+  const actualColdPressure = coldPressure;
   
   // 如果热流体在管外，交换热流体和冷流体的参数（用于内部计算）
   // 但保持原始参数以便最终结果显示
@@ -1570,21 +1630,41 @@ export async function calculateHeatExchanger(params) {
     if (hotProps) {
       console.log('[管内压降计算] 开始计算，hotProps存在:', !!hotProps);
       // 判断是否为两相流
-      // 1. 如果入口或出口状态值是0-1之间，直接是两相流
-      // 2. 如果是冷凝/蒸发过程（状态值从1→0或0→1），也是有相变的，使用两相流计算
-      const hotProcessType = params.hotProcessType || 'cooling';
+      // 注意：使用calcHotProcessType而不是params.hotProcessType，因为如果热流体在管外，参数已经交换
+      const hotProcessType = calcHotProcessType || 'cooling';
       const hotIsCondensation = hotProcessType === 'condensation';
-      // 从params获取状态值，如果没有则使用计算后的相态
-      const hotStateInValue = params.hotStateIn !== null && params.hotStateIn !== undefined ? params.hotStateIn : 
-                             (calcHotPhaseIn === 'twophase' && calcHotQualityIn ? calcHotQualityIn : 
-                              (calcHotPhaseIn === 'twophase' ? 0.5 : (calcHotPhaseIn === 'single' ? (calcHotQualityIn || 1) : null)));
-      const hotStateOutValue = params.hotStateOut !== null && params.hotStateOut !== undefined ? params.hotStateOut : 
-                              (calcHotPhaseOut === 'twophase' && calcHotQualityOut ? calcHotQualityOut : 
-                               (calcHotPhaseOut === 'twophase' ? 0.5 : (calcHotPhaseOut === 'single' ? (calcHotQualityOut || 0) : null)));
+      // 从params获取状态值（使用原始状态值，因为交换是在calcHotPhaseIn中处理的）
+      // 如果热流体在管外，需要从原始冷流体状态值获取
+      const hotStateInValue = hotFluidLocation === 'outer' 
+        ? (params.coldStateIn !== null && params.coldStateIn !== undefined ? params.coldStateIn : 
+           (calcHotPhaseIn === 'twophase' && calcHotQualityIn ? calcHotQualityIn : 
+            (calcHotPhaseIn === 'twophase' ? 0.5 : (calcHotPhaseIn === 'single' ? (calcHotQualityIn || 0) : null))))
+        : (params.hotStateIn !== null && params.hotStateIn !== undefined ? params.hotStateIn : 
+           (calcHotPhaseIn === 'twophase' && calcHotQualityIn ? calcHotQualityIn : 
+            (calcHotPhaseIn === 'twophase' ? 0.5 : (calcHotPhaseIn === 'single' ? (calcHotQualityIn || 1) : null))));
+      const hotStateOutValue = hotFluidLocation === 'outer'
+        ? (params.coldStateOut !== null && params.coldStateOut !== undefined ? params.coldStateOut : 
+           (calcHotPhaseOut === 'twophase' && calcHotQualityOut ? calcHotQualityOut : 
+            (calcHotPhaseOut === 'twophase' ? 0.5 : (calcHotPhaseOut === 'single' ? (calcHotQualityOut || 0) : null))))
+        : (params.hotStateOut !== null && params.hotStateOut !== undefined ? params.hotStateOut : 
+           (calcHotPhaseOut === 'twophase' && calcHotQualityOut ? calcHotQualityOut : 
+            (calcHotPhaseOut === 'twophase' ? 0.5 : (calcHotPhaseOut === 'single' ? (calcHotQualityOut || 0) : null))));
       const hotHasStateChange = (hotStateInValue === 1 && hotStateOutValue === 0) || (hotStateInValue === 0 && hotStateOutValue === 1);
       
       const hotIsTwoPhase = calcHotPhaseIn === 'twophase' || calcHotPhaseOut === 'twophase' || 
                            (hotIsCondensation && hotHasStateChange);
+      
+      console.log('[管内压降计算] 相态判断:', {
+        calcHotPhaseIn,
+        calcHotPhaseOut,
+        hotProcessType,
+        hotIsCondensation,
+        hotHasStateChange,
+        hotStateInValue,
+        hotStateOutValue,
+        hotIsTwoPhase,
+        hotFluidLocation
+      });
       
       let hotQualityAvg = null;
       if (hotIsTwoPhase) {
@@ -1613,14 +1693,31 @@ export async function calculateHeatExchanger(params) {
         innerCrossSection = Math.PI * Math.pow(innerDiameter / 2, 2);
       } else {
         if (actualIsTwisted) {
-          // 麻花管：管内流动应使用麻花管内径计算流通面积
-          // 麻花管外径（actualInnerOuterDiameter）用于管外（环形空间）流动
-          // 麻花管内径（actualInnerInnerDiameter）用于管内流动
-          // 管内通常是圆形截面，使用内径计算
-          innerCrossSection = Math.PI * Math.pow(actualInnerInnerDiameter / 2, 2);
-          innerDiameter = actualInnerInnerDiameter;
+          // 麻花管：管内流动应使用梅花截面的当量直径和流通面积
+          // 计算梅花截面的几何参数
+          // Do,max（峰顶外接圆）= 外管内径（贴合状态）
+          const doMax = outerInnerDiameter;
+          // Do,min（谷底内切圆）= Do,max - 2*h，其中h为齿高
+          const doMin = doMax - 2 * (twistToothHeight || 0.003);
+          
+          // 计算梅花截面的几何参数
+          const lobeSection = calculateLobeCrossSection(doMax, doMin, twistLobeCount || 6);
+          
+          // 使用梅花截面的流通面积和当量直径
+          innerCrossSection = lobeSection.area;
+          innerDiameter = lobeSection.equivalentDiameter;
+          
+          console.log('[管内压降计算] 麻花管梅花截面参数:', {
+            doMax: doMax * 1000, // mm
+            doMin: doMin * 1000, // mm
+            twistToothHeight: (twistToothHeight || 0.003) * 1000, // mm
+            lobeCount: twistLobeCount || 6,
+            area: innerCrossSection,
+            equivalentDiameter: innerDiameter,
+            perimeter: lobeSection.perimeter
+          });
         } else {
-          // 直管
+          // 直管：使用圆形截面
           innerCrossSection = Math.PI * Math.pow(actualInnerInnerDiameter / 2, 2);
           innerDiameter = actualInnerInnerDiameter;
         }
@@ -1636,12 +1733,15 @@ export async function calculateHeatExchanger(params) {
           hotProps.viscosity
         );
         console.log('[管内压降计算] 参数计算完成:', {
+          flowRatePerTube,
           innerCrossSection,
           innerDiameter,
           innerVelocity,
           innerRe,
           density: hotProps.density,
-          viscosity: hotProps.viscosity
+          viscosity: hotProps.viscosity,
+          flowRate: actualHotFlowRate,
+          innerTubeCount
         });
       } else {
         console.warn('管内压降计算：流通面积或物性无效', {
@@ -1659,24 +1759,21 @@ export async function calculateHeatExchanger(params) {
       let baseInnerFrictionFactor = calculateFrictionFactor(innerRe, 0.0001);
       if (actualIsTwisted) {
         // 应用麻花管摩擦系数修正
+        // 注意：对于麻花管，应该使用当量直径而不是圆形内径
+        const diameterForFrictionFactor = innerDiameter; // 已经使用当量直径
         baseInnerFrictionFactor = calculateTwistedTubeFrictionFactor(
           baseInnerFrictionFactor,
           twistPitch,
-          actualInnerInnerDiameter,
+          diameterForFrictionFactor,
           twistLobeCount
         );
       }
       
       innerFrictionFactor = baseInnerFrictionFactor;
       
-      // 如果使用了麻花管，需要考虑螺旋路径长度
-      let effectiveLength = length;
-      if (actualIsTwisted) {
-        // 计算管内螺旋路径长度（管内流动路径也是螺旋形的）
-        // 使用内管的当量直径计算螺旋路径
-        const spiralPathLength = length * Math.sqrt(1 + Math.pow(Math.PI * innerDiameter / twistPitch, 2));
-        effectiveLength = spiralPathLength;
-      }
+      // 管内流动使用直管长度（管内是圆形截面，流动是直的）
+      // 注意：螺旋路径长度只用于管外（环形空间）流动，管内流动是直的
+      const effectiveLength = length;
       
       // 根据相态选择压降计算方法
       if (hotIsTwoPhase && hotQualityAvg !== null && hotQualityAvg > 0 && hotQualityAvg < 1) {
@@ -1701,16 +1798,18 @@ export async function calculateHeatExchanger(params) {
           }
           
           const massFlux = (actualHotFlowRate / innerTubeCount) / innerCrossSection; // kg/m²/s
+          // 计算单流程压降，然后乘以流程数
+          const singlePassLength = effectiveLength; // 单流程长度
           innerPressureDrop = calculateTwoPhasePressureDrop(
             liquidProps,
             vaporProps,
             hotQualityAvg,
             massFlux,
             innerDiameter,
-            effectiveLength,
+            singlePassLength,
             0.0001
           );
-          // 考虑多流程
+          // 考虑多流程：总压降 = 单流程压降 × 流程数
           innerPressureDrop.pressureDrop = innerPressureDrop.pressureDrop * passCount;
           innerPressureDrop.pressureDrop_kPa = innerPressureDrop.pressureDrop / 1000;
         } catch (error) {
@@ -1725,15 +1824,10 @@ export async function calculateHeatExchanger(params) {
             0.0001,
             passCount
           );
+          // 麻花管的摩擦系数修正已经通过calculateTwistedTubeFrictionFactor应用
+          // calculateInnerTubePressureDrop已经考虑了流程数，不需要再次修正
           if (actualIsTwisted) {
-            const totalSpiralLength = effectiveLength * passCount;
-            const correctedPressureDrop = baseInnerFrictionFactor * (totalSpiralLength / innerDiameter) * 
-                                          (hotProps.density * innerVelocity * innerVelocity / 2);
-            innerPressureDrop = {
-              pressureDrop: correctedPressureDrop,
-              pressureDrop_kPa: correctedPressureDrop / 1000,
-              frictionFactor: baseInnerFrictionFactor
-            };
+            console.log('[管内压降计算] 两相流降级为单相流，麻花管压降（已应用摩擦系数修正）:', innerPressureDrop);
           }
         }
       } else {
@@ -1758,18 +1852,24 @@ export async function calculateHeatExchanger(params) {
             passCount
           );
           console.log('[管内压降计算] 基础压降计算结果:', innerPressureDrop);
+          console.log('[管内压降计算] 详细计算参数:', {
+            density: hotProps.density,
+            velocity: innerVelocity,
+            length: effectiveLength,
+            diameter: innerDiameter,
+            re: innerRe,
+            frictionFactor: innerPressureDrop.frictionFactor,
+            pressureDrop_kPa: innerPressureDrop.pressureDrop_kPa,
+            passCount,
+            totalLength: effectiveLength * passCount,
+            formula: `f * (L/D) * (ρv²/2) = ${innerPressureDrop.frictionFactor} * (${effectiveLength * passCount}/${innerDiameter}) * (${hotProps.density} * ${innerVelocity}² / 2)`
+          });
           
-          // 如果使用了麻花管修正，需要重新计算压降（考虑多流程）
+          // 如果使用了麻花管，摩擦系数已经在baseInnerFrictionFactor中修正了
+          // calculateInnerTubePressureDrop已经考虑了流程数，不需要再次修正
+          // 麻花管的摩擦系数修正已经通过calculateTwistedTubeFrictionFactor应用
           if (actualIsTwisted) {
-            const totalSpiralLength = effectiveLength * passCount;
-            const correctedPressureDrop = baseInnerFrictionFactor * (totalSpiralLength / innerDiameter) * 
-                                          (hotProps.density * innerVelocity * innerVelocity / 2);
-            innerPressureDrop = {
-              pressureDrop: correctedPressureDrop,
-              pressureDrop_kPa: correctedPressureDrop / 1000,
-              frictionFactor: baseInnerFrictionFactor
-            };
-            console.log('[管内压降计算] 麻花管修正后压降:', innerPressureDrop);
+            console.log('[管内压降计算] 麻花管压降（已应用摩擦系数修正）:', innerPressureDrop);
           }
         } else {
           console.warn('管内压降计算：单相流参数无效，无法计算压降', {
@@ -2292,7 +2392,37 @@ export async function calculateHeatExchanger(params) {
     const heatTransferRate_kW = Q / 1000; // 转换为 kW
     console.log(`[计算结果] 传热量: ${heatTransferRate_kW} kW (输入模式: ${inputMode})`);
 
-    // 计算温度分布
+    // 计算温度分布（考虑冷凝/蒸发过程）
+    // 判断是否为冷凝/蒸发过程
+    const hotHasPhaseChange = (hotStateIn === 1 && hotStateOut === 0) || (hotStateIn === 0 && hotStateOut === 1);
+    const coldHasPhaseChange = (coldStateIn === 1 && coldStateOut === 0) || (coldStateIn === 0 && coldStateOut === 1);
+    const hotIsCondensation = hotProcessType === 'condensation' && hotHasPhaseChange;
+    const coldIsEvaporation = coldProcessType === 'evaporation' && coldHasPhaseChange;
+    
+    // 计算饱和温度（用于温度分布）
+    let hotSaturationTemp = null;
+    let coldSaturationTemp = null;
+    
+    if (hotIsCondensation) {
+      try {
+        const { getSaturationTemperature } = await import('./coolprop_loader.js');
+        const satTempK = await getSaturationTemperature(hotFluid, actualHotPressure * 1000);
+        hotSaturationTemp = satTempK - 273.15; // 转换为 °C
+      } catch (error) {
+        console.warn('无法获取热流体饱和温度，使用线性温度分布:', error);
+      }
+    }
+    
+    if (coldIsEvaporation) {
+      try {
+        const { getSaturationTemperature } = await import('./coolprop_loader.js');
+        const satTempK = await getSaturationTemperature(coldFluid, actualColdPressure * 1000);
+        coldSaturationTemp = satTempK - 273.15; // 转换为 °C
+      } catch (error) {
+        console.warn('无法获取冷流体饱和温度，使用线性温度分布:', error);
+      }
+    }
+    
     const temperatureDistribution = calculateTemperatureDistribution(
       hotTin,
       hotTout,
@@ -2300,7 +2430,13 @@ export async function calculateHeatExchanger(params) {
       coldTout,
       length,
       flowType,
-      100 // 100个计算点
+      100, // 100个计算点
+      {
+        hotIsCondensation: hotIsCondensation,
+        hotSaturationTemp: hotSaturationTemp,
+        coldIsEvaporation: coldIsEvaporation,
+        coldSaturationTemp: coldSaturationTemp
+      }
     );
 
     // 准备返回值中的压降和摩擦系数

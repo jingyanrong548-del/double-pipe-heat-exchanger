@@ -38,10 +38,6 @@ export function getFormData() {
       const val = document.getElementById('hot-pressure')?.value;
       return val ? parseFloat(val) : null;
     })(),
-    hotSaturationTemp: (() => {
-      const val = document.getElementById('hot-saturation-temp')?.value;
-      return val ? parseFloat(val) : null;
-    })(),
     
     coldFluid: document.getElementById('cold-fluid').value,
     coldProcessType: document.getElementById('cold-process-type')?.value || 'cooling',
@@ -58,10 +54,6 @@ export function getFormData() {
     coldFlowRate: inputMode === 'flowrate' ? parseFloat(document.getElementById('cold-flowrate').value) : null,
     coldPressure: (() => {
       const val = document.getElementById('cold-pressure')?.value;
-      return val ? parseFloat(val) : null;
-    })(),
-    coldSaturationTemp: (() => {
-      const val = document.getElementById('cold-saturation-temp')?.value;
       return val ? parseFloat(val) : null;
     })(),
     
@@ -142,23 +134,9 @@ export function validateFormData(data) {
     errors.push('热流体出口状态必须在0-1之间（0=液体，1=气体，0-1=两相干度）');
   }
   
-  // 验证压力或饱和温度
-  const hotIsPhaseChange = data.hotProcessType === 'condensation';
-  if (hotIsPhaseChange) {
-    // 冷凝：需要压力或饱和温度（二选一，不能同时输入）
-    const hasPressure = data.hotPressure && data.hotPressure > 0;
-    const hasSaturationTemp = data.hotSaturationTemp && data.hotSaturationTemp > 0;
-    
-    if (hasPressure && hasSaturationTemp) {
-      errors.push('冷凝过程不能同时输入压力和饱和温度，请只输入其中一个');
-    } else if (!hasPressure && !hasSaturationTemp) {
-      errors.push('冷凝过程需要输入压力或饱和温度（二选一）');
-    }
-  } else {
-    // 冷却：只需要压力
-    if (!data.hotPressure || data.hotPressure <= 0) {
-      errors.push('请输入有效的热流体压力');
-    }
+  // 验证压力（所有情况都需要输入压力）
+  if (!data.hotPressure || data.hotPressure <= 0) {
+    errors.push('请输入有效的热流体压力');
   }
   
   if (inputMode === 'flowrate') {
@@ -178,23 +156,9 @@ export function validateFormData(data) {
     errors.push('冷流体出口状态必须在0-1之间（0=液体，1=气体，0-1=两相干度）');
   }
   
-  // 验证压力或饱和温度
-  const coldIsPhaseChange = data.coldProcessType === 'evaporation';
-  if (coldIsPhaseChange) {
-    // 蒸发：需要压力或饱和温度（二选一，不能同时输入）
-    const hasPressure = data.coldPressure && data.coldPressure > 0;
-    const hasSaturationTemp = data.coldSaturationTemp && data.coldSaturationTemp > 0;
-    
-    if (hasPressure && hasSaturationTemp) {
-      errors.push('蒸发过程不能同时输入压力和饱和温度，请只输入其中一个');
-    } else if (!hasPressure && !hasSaturationTemp) {
-      errors.push('蒸发过程需要输入压力或饱和温度（二选一）');
-    }
-  } else {
-    // 加热（冷流体的cooling实际是加热）：只需要压力
-    if (!data.coldPressure || data.coldPressure <= 0) {
-      errors.push('请输入有效的冷流体压力');
-    }
+  // 验证压力（所有情况都需要输入压力）
+  if (!data.coldPressure || data.coldPressure <= 0) {
+    errors.push('请输入有效的冷流体压力');
   }
   
   if (inputMode === 'flowrate') {
@@ -202,16 +166,20 @@ export function validateFormData(data) {
   }
   
   // 验证温度逻辑（单相换热：热流体冷却，冷流体加热）
+  const hotHasPhaseChange = (data.hotStateIn === 1 && data.hotStateOut === 0) || (data.hotStateIn === 0 && data.hotStateOut === 1) ||
+                            (data.hotStateIn > 0 && data.hotStateIn < 1) || (data.hotStateOut > 0 && data.hotStateOut < 1);
   const hotIsSinglePhase = (data.hotStateIn === 0 || data.hotStateIn === 1) && (data.hotStateOut === 0 || data.hotStateOut === 1);
-  if (hotIsSinglePhase && !hotIsPhaseChange) {
+  if (hotIsSinglePhase && !hotHasPhaseChange) {
     // 热流体在单相换热中是冷却过程，温度应该降低
     if (data.hotTin <= data.hotTout) {
       errors.push('热流体在单相换热中是冷却过程，入口温度必须大于出口温度');
     }
   }
   
+  const coldHasPhaseChange = (data.coldStateIn === 1 && data.coldStateOut === 0) || (data.coldStateIn === 0 && data.coldStateOut === 1) ||
+                             (data.coldStateIn > 0 && data.coldStateIn < 1) || (data.coldStateOut > 0 && data.coldStateOut < 1);
   const coldIsSinglePhase = (data.coldStateIn === 0 || data.coldStateIn === 1) && (data.coldStateOut === 0 || data.coldStateOut === 1);
-  if (coldIsSinglePhase && !coldIsPhaseChange) {
+  if (coldIsSinglePhase && !coldHasPhaseChange) {
     // 冷流体在单相换热中是加热过程，温度应该升高
     if (data.coldTout <= data.coldTin) {
       errors.push('冷流体在单相换热中是加热过程，出口温度必须大于入口温度');
@@ -399,19 +367,31 @@ export function showResults(results) {
     return num.toFixed(decimals);
   };
 
-  // 如果是负荷输入法，更新计算出的流量到输入框
+  // 如果是负荷输入法，在输出区显示计算出的流量
   if (results.inputMode === 'load') {
-    if (results.calculatedHotFlowRate !== null && results.calculatedHotFlowRate !== undefined) {
-      const hotFlowrateInput = document.getElementById('hot-flowrate');
-      if (hotFlowrateInput) {
-        hotFlowrateInput.value = formatNumber(results.calculatedHotFlowRate, 4);
+    const calculatedFlowrateContainer = document.getElementById('calculated-flowrate-container');
+    const calculatedHotFlowrateEl = document.getElementById('result-calculated-hot-flowrate');
+    const calculatedColdFlowrateEl = document.getElementById('result-calculated-cold-flowrate');
+    
+    if (calculatedFlowrateContainer) {
+      if (results.calculatedHotFlowRate !== null && results.calculatedHotFlowRate !== undefined ||
+          results.calculatedColdFlowRate !== null && results.calculatedColdFlowRate !== undefined) {
+        calculatedFlowrateContainer.classList.remove('hidden');
+        if (calculatedHotFlowrateEl && results.calculatedHotFlowRate !== null && results.calculatedHotFlowRate !== undefined) {
+          calculatedHotFlowrateEl.textContent = formatNumber(results.calculatedHotFlowRate, 4) + ' kg/s';
+        }
+        if (calculatedColdFlowrateEl && results.calculatedColdFlowRate !== null && results.calculatedColdFlowRate !== undefined) {
+          calculatedColdFlowrateEl.textContent = formatNumber(results.calculatedColdFlowRate, 4) + ' kg/s';
+        }
+      } else {
+        calculatedFlowrateContainer.classList.add('hidden');
       }
     }
-    if (results.calculatedColdFlowRate !== null && results.calculatedColdFlowRate !== undefined) {
-      const coldFlowrateInput = document.getElementById('cold-flowrate');
-      if (coldFlowrateInput) {
-        coldFlowrateInput.value = formatNumber(results.calculatedColdFlowRate, 4);
-      }
+  } else {
+    // 流量输入法时隐藏计算流量显示
+    const calculatedFlowrateContainer = document.getElementById('calculated-flowrate-container');
+    if (calculatedFlowrateContainer) {
+      calculatedFlowrateContainer.classList.add('hidden');
     }
   }
 
@@ -720,11 +700,17 @@ export async function performCalculation() {
       hotTout: formData.hotTout,
       hotFlowRate: formData.hotFlowRate,
       hotPressure: formData.hotPressure,
+      hotProcessType: formData.hotProcessType,
+      hotStateIn: formData.hotStateIn,
+      hotStateOut: formData.hotStateOut,
       coldFluid: formData.coldFluid,
       coldTin: formData.coldTin,
       coldTout: formData.coldTout,
       coldFlowRate: formData.coldFlowRate,
       coldPressure: formData.coldPressure,
+      coldProcessType: formData.coldProcessType,
+      coldStateIn: formData.coldStateIn,
+      coldStateOut: formData.coldStateOut,
       // 传热面积计算使用外径
       innerDiameter: formData.innerDiameter, // 内管外径
       outerDiameter: formData.outerDiameter, // 外管外径
@@ -841,35 +827,15 @@ function updateInputModeUI() {
   const coldFlowrateCalculated = document.getElementById('cold-flowrate-calculated');
   
   if (inputMode === 'load') {
-    // 负荷输入法：显示传热量输入，隐藏流量输入或标记为计算值
+    // 负荷输入法：显示传热量输入，隐藏流量输入
     if (heatLoadContainer) heatLoadContainer.classList.remove('hidden');
-    if (hotFlowrateContainer) {
-      hotFlowrateInput.readOnly = true;
-      hotFlowrateInput.classList.add('bg-gray-100', 'cursor-not-allowed');
-      hotFlowrateLabel.textContent = '质量流量 (kg/s)';
-      if (hotFlowrateCalculated) hotFlowrateCalculated.classList.remove('hidden');
-    }
-    if (coldFlowrateContainer) {
-      coldFlowrateInput.readOnly = true;
-      coldFlowrateInput.classList.add('bg-gray-100', 'cursor-not-allowed');
-      coldFlowrateLabel.textContent = '质量流量 (kg/s)';
-      if (coldFlowrateCalculated) coldFlowrateCalculated.classList.remove('hidden');
-    }
+    if (hotFlowrateContainer) hotFlowrateContainer.classList.add('hidden');
+    if (coldFlowrateContainer) coldFlowrateContainer.classList.add('hidden');
   } else {
     // 流量输入法：隐藏传热量输入，显示流量输入
     if (heatLoadContainer) heatLoadContainer.classList.add('hidden');
-    if (hotFlowrateContainer) {
-      hotFlowrateInput.readOnly = false;
-      hotFlowrateInput.classList.remove('bg-gray-100', 'cursor-not-allowed');
-      hotFlowrateLabel.textContent = '质量流量 (kg/s)';
-      if (hotFlowrateCalculated) hotFlowrateCalculated.classList.add('hidden');
-    }
-    if (coldFlowrateContainer) {
-      coldFlowrateInput.readOnly = false;
-      coldFlowrateInput.classList.remove('bg-gray-100', 'cursor-not-allowed');
-      coldFlowrateLabel.textContent = '质量流量 (kg/s)';
-      if (coldFlowrateCalculated) coldFlowrateCalculated.classList.add('hidden');
-    }
+    if (hotFlowrateContainer) hotFlowrateContainer.classList.remove('hidden');
+    if (coldFlowrateContainer) coldFlowrateContainer.classList.remove('hidden');
   }
 }
 
@@ -1099,112 +1065,10 @@ export function initializeUI() {
     }
   });
   
-  // 两相流UI交互：根据过程类型显示/隐藏相应的输入字段
+  // 压力输入始终显示（已移除饱和温度相关逻辑）
+  // 初始化和绑定事件
   const hotProcessTypeSelect = document.getElementById('hot-process-type');
   const coldProcessTypeSelect = document.getElementById('cold-process-type');
-  const hotPressureContainer = document.getElementById('hot-pressure-container');
-  const hotSaturationTempContainer = document.getElementById('hot-saturation-temp-container');
-  const coldPressureContainer = document.getElementById('cold-pressure-container');
-  const coldSaturationTempContainer = document.getElementById('cold-saturation-temp-container');
-  
-  const updateProcessInputsVisibility = () => {
-    // 热流体
-    if (hotProcessTypeSelect && hotPressureContainer && hotSaturationTempContainer) {
-      const processType = hotProcessTypeSelect.value;
-      const hotPressureHint = document.getElementById('hot-pressure-hint');
-      const hotSaturationTempHint = document.getElementById('hot-saturation-temp-hint');
-      const hotPressureRequired = document.getElementById('hot-pressure-required');
-      const hotSaturationTempRequired = document.getElementById('hot-saturation-temp-required');
-      
-      if (processType === 'cooling') {
-        // 冷却：只显示压力输入
-        hotPressureContainer.classList.remove('hidden');
-        hotSaturationTempContainer.classList.add('hidden');
-        if (hotPressureHint) hotPressureHint.classList.add('hidden');
-        if (hotPressureRequired) hotPressureRequired.classList.remove('hidden');
-      } else if (processType === 'condensation') {
-        // 冷凝：显示压力或饱和温度输入（互斥）
-        hotPressureContainer.classList.remove('hidden');
-        hotSaturationTempContainer.classList.remove('hidden');
-        if (hotPressureHint) hotPressureHint.classList.remove('hidden');
-        if (hotSaturationTempHint) hotSaturationTempHint.classList.remove('hidden');
-        // 两个参数互斥，不是必填的（二选一）
-        if (hotPressureRequired) hotPressureRequired.classList.add('hidden');
-        if (hotSaturationTempRequired) hotSaturationTempRequired.classList.remove('hidden');
-      }
-    }
-    
-    // 冷流体
-    if (coldProcessTypeSelect && coldPressureContainer && coldSaturationTempContainer) {
-      const processType = coldProcessTypeSelect.value;
-      const coldPressureHint = document.getElementById('cold-pressure-hint');
-      const coldSaturationTempHint = document.getElementById('cold-saturation-temp-hint');
-      const coldPressureRequired = document.getElementById('cold-pressure-required');
-      const coldSaturationTempRequired = document.getElementById('cold-saturation-temp-required');
-      
-      if (processType === 'cooling') {
-        // 加热（冷流体的cooling实际是加热）：只显示压力输入
-        coldPressureContainer.classList.remove('hidden');
-        coldSaturationTempContainer.classList.add('hidden');
-        if (coldPressureHint) coldPressureHint.classList.add('hidden');
-        if (coldPressureRequired) coldPressureRequired.classList.remove('hidden');
-      } else if (processType === 'evaporation') {
-        // 蒸发：显示压力或饱和温度输入（互斥）
-        coldPressureContainer.classList.remove('hidden');
-        coldSaturationTempContainer.classList.remove('hidden');
-        if (coldPressureHint) coldPressureHint.classList.remove('hidden');
-        if (coldSaturationTempHint) coldSaturationTempHint.classList.remove('hidden');
-        // 两个参数互斥，不是必填的（二选一）
-        if (coldPressureRequired) coldPressureRequired.classList.add('hidden');
-        if (coldSaturationTempRequired) coldSaturationTempRequired.classList.remove('hidden');
-      }
-    }
-  };
-  
-  // 添加互斥逻辑：当输入压力时，清空饱和温度；当输入饱和温度时，清空压力
-  const hotPressureInput = document.getElementById('hot-pressure');
-  const hotSaturationTempInput = document.getElementById('hot-saturation-temp');
-  const coldPressureInput = document.getElementById('cold-pressure');
-  const coldSaturationTempInput = document.getElementById('cold-saturation-temp');
-  
-  if (hotPressureInput && hotSaturationTempInput) {
-    hotPressureInput.addEventListener('input', () => {
-      if (hotPressureInput.value && hotProcessTypeSelect && hotProcessTypeSelect.value === 'condensation') {
-        hotSaturationTempInput.value = '';
-      }
-    });
-    
-    hotSaturationTempInput.addEventListener('input', () => {
-      if (hotSaturationTempInput.value && hotProcessTypeSelect && hotProcessTypeSelect.value === 'condensation') {
-        hotPressureInput.value = '';
-      }
-    });
-  }
-  
-  if (coldPressureInput && coldSaturationTempInput) {
-    coldPressureInput.addEventListener('input', () => {
-      if (coldPressureInput.value && coldProcessTypeSelect && coldProcessTypeSelect.value === 'evaporation') {
-        coldSaturationTempInput.value = '';
-      }
-    });
-    
-    coldSaturationTempInput.addEventListener('input', () => {
-      if (coldSaturationTempInput.value && coldProcessTypeSelect && coldProcessTypeSelect.value === 'evaporation') {
-        coldPressureInput.value = '';
-      }
-    });
-  }
-  
-  // 初始化和绑定事件
-  if (hotProcessTypeSelect) {
-    hotProcessTypeSelect.addEventListener('change', updateProcessInputsVisibility);
-  }
-  if (coldProcessTypeSelect) {
-    coldProcessTypeSelect.addEventListener('change', updateProcessInputsVisibility);
-  }
-  
-  // 初始化显示状态
-  updateProcessInputsVisibility();
   
   // 根据过程类型显示温度提示（单相换热时显示）
   const hotTinHint = document.getElementById('hot-tin-hint');
@@ -1243,13 +1107,11 @@ export function initializeUI() {
   // 监听过程类型变化
   if (hotProcessTypeSelect) {
     hotProcessTypeSelect.addEventListener('change', () => {
-      updateProcessInputsVisibility();
       updateTemperatureHints();
     });
   }
   if (coldProcessTypeSelect) {
     coldProcessTypeSelect.addEventListener('change', () => {
-      updateProcessInputsVisibility();
       updateTemperatureHints();
     });
   }
