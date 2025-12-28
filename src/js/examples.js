@@ -121,35 +121,123 @@ export const refrigerantExample = {
 };
 
 /**
+ * 当前调试案例：R134a冷凝（管外）- 水加热（管内）麻花管换热器
+ * 热流体在管外，冷流体在管内
+ */
+export const currentDebugExample = {
+  // 输入模式
+  inputMode: 'load',  // 负荷输入法
+  
+  // 热流体位置
+  hotFluidLocation: 'outer',  // 热流体在管外
+  
+  // 热流体参数（R134a，冷凝，在管外）
+  hotFluid: 'R134a',
+  hotProcessType: 'condensation',  // 冷凝
+  hotStateIn: 1.0,  // 入口状态：气体
+  hotStateOut: 0.0,  // 出口状态：液体
+  hotTin: 105,
+  hotTout: 45,
+  hotFlowRate: null,  // 负荷输入法，由系统计算
+  hotPressure: null,  // kPa - 不输入，由饱和温度计算
+  hotSaturationTemp: 85,  // °C
+  
+  // 冷流体参数（水，加热，在管内）
+  coldFluid: 'Water',
+  coldProcessType: 'cooling',  // 加热（对于冷流体，cooling表示被加热）
+  coldStateIn: 0.0,  // 入口状态：液体
+  coldStateOut: 0.0,  // 出口状态：液体
+  coldTin: 40,
+  coldTout: 80,
+  coldFlowRate: null,  // 负荷输入法，由系统计算
+  coldPressure: 400,  // kPa
+  
+  // 传热量
+  heatLoad: 41.8,  // kW
+  
+  // 换热器参数
+  innerOuterDiameter: 0.034,  // 34mm 麻花管外径（等于外管内径）
+  innerWallThickness: 0.001,  // 1mm 麻花管壁厚
+  outerOuterDiameter: 0.038,  // 38mm 外管外径
+  outerWallThickness: 0.002,  // 2mm 外管壁厚
+  length: 5.0,  // 5米管长
+  flowType: 'counter',  // 逆流
+  
+  // 内管参数
+  innerTubeCount: 1,  // 1根内管
+  innerTubeType: 'twisted',  // 麻花管
+  isTwisted: true,
+  twistPitch: 6.5,  // 6.5mm 螺旋节距（注意：这里单位是mm）
+  twistLobeCount: 6,  // 6头
+  twistToothHeight: 3.0,  // 3mm 齿高（注意：这里单位是mm）
+  twistWallThickness: 1.0,  // 1mm 麻花管壁厚（注意：这里单位是mm）
+  passCount: 1,  // 1个流程
+  outerTubeCountPerPass: 1,  // 每流程1根外管
+  
+  // 传热系数（留空自动计算）
+  givenU: null
+};
+
+/**
  * 加载示例数据到表单
  * @param {Object} exampleData - 示例数据对象
  */
 export function loadExampleToForm(exampleData) {
+  // 输入模式和热流体位置
+  if (exampleData.inputMode) {
+    const inputModeRadio = document.querySelector(`input[name="input-mode"][value="${exampleData.inputMode}"]`);
+    if (inputModeRadio) inputModeRadio.checked = true;
+  }
+  if (exampleData.hotFluidLocation) {
+    const hotFluidLocationRadio = document.querySelector(`input[name="hot-fluid-location"][value="${exampleData.hotFluidLocation}"]`);
+    if (hotFluidLocationRadio) hotFluidLocationRadio.checked = true;
+  }
+  
   // 热流体参数
   const hotFluidSelect = document.getElementById('hot-fluid');
+  const hotProcessTypeSelect = document.getElementById('hot-process-type');
+  const hotStateInInput = document.getElementById('hot-state-in');
+  const hotStateOutInput = document.getElementById('hot-state-out');
   const hotTinInput = document.getElementById('hot-tin');
   const hotToutInput = document.getElementById('hot-tout');
   const hotFlowRateInput = document.getElementById('hot-flowrate');
   const hotPressureInput = document.getElementById('hot-pressure');
+  const hotSaturationTempInput = document.getElementById('hot-saturation-temp');
   
   if (hotFluidSelect) hotFluidSelect.value = exampleData.hotFluid;
+  if (hotProcessTypeSelect && exampleData.hotProcessType) hotProcessTypeSelect.value = exampleData.hotProcessType;
+  if (hotStateInInput && exampleData.hotStateIn !== undefined) hotStateInInput.value = exampleData.hotStateIn;
+  if (hotStateOutInput && exampleData.hotStateOut !== undefined) hotStateOutInput.value = exampleData.hotStateOut;
   if (hotTinInput) hotTinInput.value = exampleData.hotTin;
   if (hotToutInput) hotToutInput.value = exampleData.hotTout;
-  if (hotFlowRateInput) hotFlowRateInput.value = exampleData.hotFlowRate;
-  if (hotPressureInput) hotPressureInput.value = exampleData.hotPressure;
+  if (hotFlowRateInput) hotFlowRateInput.value = exampleData.hotFlowRate || '';
+  if (hotPressureInput) hotPressureInput.value = exampleData.hotPressure || '';
+  if (hotSaturationTempInput && exampleData.hotSaturationTemp) hotSaturationTempInput.value = exampleData.hotSaturationTemp;
   
   // 冷流体参数
   const coldFluidSelect = document.getElementById('cold-fluid');
+  const coldProcessTypeSelect = document.getElementById('cold-process-type');
+  const coldStateInInput = document.getElementById('cold-state-in');
+  const coldStateOutInput = document.getElementById('cold-state-out');
   const coldTinInput = document.getElementById('cold-tin');
   const coldToutInput = document.getElementById('cold-tout');
   const coldFlowRateInput = document.getElementById('cold-flowrate');
   const coldPressureInput = document.getElementById('cold-pressure');
   
   if (coldFluidSelect) coldFluidSelect.value = exampleData.coldFluid;
+  if (coldProcessTypeSelect && exampleData.coldProcessType) coldProcessTypeSelect.value = exampleData.coldProcessType;
+  if (coldStateInInput && exampleData.coldStateIn !== undefined) coldStateInInput.value = exampleData.coldStateIn;
+  if (coldStateOutInput && exampleData.coldStateOut !== undefined) coldStateOutInput.value = exampleData.coldStateOut;
   if (coldTinInput) coldTinInput.value = exampleData.coldTin;
   if (coldToutInput) coldToutInput.value = exampleData.coldTout;
-  if (coldFlowRateInput) coldFlowRateInput.value = exampleData.coldFlowRate;
+  if (coldFlowRateInput) coldFlowRateInput.value = exampleData.coldFlowRate || '';
   if (coldPressureInput) coldPressureInput.value = exampleData.coldPressure;
+  
+  // 传热量（负荷输入法）
+  if (exampleData.heatLoad !== undefined) {
+    const heatLoadInput = document.getElementById('heat-load');
+    if (heatLoadInput) heatLoadInput.value = exampleData.heatLoad;
+  }
   
   // 换热器参数
   const innerOuterDiameterInput = document.getElementById('inner-outer-diameter');
@@ -164,10 +252,14 @@ export function loadExampleToForm(exampleData) {
   const defaultInnerWallThickness = exampleData.innerWallThickness || (exampleData.innerDiameter * 0.1);
   const defaultOuterWallThickness = exampleData.outerWallThickness || (exampleData.outerDiameter * 0.05);
   
+  // 使用示例数据中的壁厚，如果提供的话
+  const actualInnerWallThickness = exampleData.innerWallThickness || defaultInnerWallThickness;
+  const actualOuterWallThickness = exampleData.outerWallThickness || defaultOuterWallThickness;
+  
   if (innerOuterDiameterInput) innerOuterDiameterInput.value = (exampleData.innerDiameter || exampleData.innerOuterDiameter) * 1000; // 转换为mm
-  if (innerWallThicknessInput) innerWallThicknessInput.value = defaultInnerWallThickness * 1000; // 转换为mm
+  if (innerWallThicknessInput) innerWallThicknessInput.value = actualInnerWallThickness * 1000; // 转换为mm
   if (outerOuterDiameterInput) outerOuterDiameterInput.value = (exampleData.outerDiameter || exampleData.outerOuterDiameter) * 1000; // 转换为mm
-  if (outerWallThicknessInput) outerWallThicknessInput.value = defaultOuterWallThickness * 1000; // 转换为mm
+  if (outerWallThicknessInput) outerWallThicknessInput.value = actualOuterWallThickness * 1000; // 转换为mm
   if (lengthInput) lengthInput.value = exampleData.length;
   if (flowTypeSelect) flowTypeSelect.value = exampleData.flowType;
   if (heatTransferCoefficientInput) heatTransferCoefficientInput.value = exampleData.givenU || '';
@@ -220,6 +312,40 @@ export function loadExampleToForm(exampleData) {
     twistLobeCountSelect.value = exampleData.twistLobeCount || 6;
   }
   if (twistAngleInput) twistAngleInput.value = exampleData.twistAngle || 45;
+  
+  // 麻花管壁厚（如果提供）
+  if (exampleData.twistWallThickness !== undefined) {
+    const twistWallThicknessInput = document.getElementById('twist-wall-thickness');
+    if (twistWallThicknessInput) {
+      // 如果值大于0.1，认为已经是mm单位；否则认为是m单位，转换为mm
+      const wallThicknessValue = exampleData.twistWallThickness;
+      twistWallThicknessInput.value = wallThicknessValue > 0.1 ? wallThicknessValue : wallThicknessValue * 1000;
+    }
+  }
+  
+  // 触发输入模式切换事件，更新UI显示
+  if (exampleData.inputMode) {
+    const inputModeEvent = new Event('change');
+    document.querySelectorAll('input[name="input-mode"]').forEach(radio => {
+      if (radio.checked) radio.dispatchEvent(inputModeEvent);
+    });
+  }
+  
+  // 触发热流体位置切换事件
+  if (exampleData.hotFluidLocation) {
+    const hotFluidLocationEvent = new Event('change');
+    document.querySelectorAll('input[name="hot-fluid-location"]').forEach(radio => {
+      if (radio.checked) radio.dispatchEvent(hotFluidLocationEvent);
+    });
+  }
+  
+  // 触发过程类型切换事件，更新UI显示
+  if (hotProcessTypeSelect && exampleData.hotProcessType) {
+    hotProcessTypeSelect.dispatchEvent(new Event('change'));
+  }
+  if (coldProcessTypeSelect && exampleData.coldProcessType) {
+    coldProcessTypeSelect.dispatchEvent(new Event('change'));
+  }
   
   // 触发 change 事件以更新可视化
   if (innerTubeTypeSelect) {

@@ -877,6 +877,16 @@ function updateInputModeUI() {
  * 初始化 UI 事件监听
  */
 export function initializeUI() {
+  // 加载默认示例（调试用）
+  import('./examples.js').then(({ currentDebugExample, loadExampleToForm }) => {
+    if (currentDebugExample) {
+      loadExampleToForm(currentDebugExample);
+      console.log('[初始化] 已加载默认调试案例');
+    }
+  }).catch(err => {
+    console.warn('[初始化] 无法加载默认案例:', err);
+  });
+  
   // 输入模式切换事件
   const inputModeRadios = document.querySelectorAll('input[name="input-mode"]');
   inputModeRadios.forEach(radio => {
