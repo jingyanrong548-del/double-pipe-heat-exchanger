@@ -3,6 +3,8 @@
  * 绘制换热器的侧视图和前视图
  */
 
+import { calculateLobeCrossSection } from './heat_exchanger.js';
+
 /**
  * 绘制侧视图
  * @param {HTMLCanvasElement} canvas - Canvas 元素
@@ -312,6 +314,7 @@ export function drawFrontView(canvas, params) {
     innerTubeType = 'smooth',
     isTwisted = false,
     twistLobeCount = 4, // 麻花管头数
+    twistToothHeight = 0.003, // 麻花管齿高
     passCount = 1,
     outerTubeCountPerPass = 1
   } = params;
@@ -415,28 +418,28 @@ export function drawFrontView(canvas, params) {
   const centerX = alignToPixel(width / 2);
   const centerY = alignToPixel(topSpace + (height - topSpace - bottomSpace) / 2);
   
-  // 绘制外管（显示壁厚结构）
+  // 绘制外管（工程图纸风格：浅蓝色填充，黑色粗轮廓）
   // 外管外圆
-  ctx.fillStyle = 'rgba(59, 130, 246, 0.15)';
+  ctx.fillStyle = 'rgba(173, 216, 230, 0.3)'; // 浅蓝色填充
   ctx.beginPath();
   ctx.arc(centerX, centerY, outerOuterRad * scale, 0, 2 * Math.PI);
   ctx.fill();
   
-  ctx.strokeStyle = '#3b82f6';
-  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#000000'; // 黑色轮廓
+  ctx.lineWidth = 4; // 加粗轮廓线
   ctx.beginPath();
   ctx.arc(centerX, centerY, outerOuterRad * scale, 0, 2 * Math.PI);
   ctx.stroke();
   
-  // 外管内圆（显示壁厚）
+  // 外管内圆（显示壁厚，白色填充表示内部空间）
   if (outerInnerRad > 0 && actualOuterWallThickness > 0) {
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.fillStyle = 'rgba(173, 216, 230, 0.3)'; // 保持浅蓝色
     ctx.beginPath();
     ctx.arc(centerX, centerY, outerInnerRad * scale, 0, 2 * Math.PI);
     ctx.fill();
     
-    ctx.strokeStyle = '#60a5fa';
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#000000'; // 黑色轮廓
+    ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.arc(centerX, centerY, outerInnerRad * scale, 0, 2 * Math.PI);
     ctx.stroke();
@@ -469,7 +472,7 @@ export function drawFrontView(canvas, params) {
     const tubeY = centerY + Math.sin(angle) * arrangementRadius;
     
     if (actualIsTwisted) {
-      // 绘制梅花截面（基于Do,max和Do,min）
+      // 绘制梅花截面（工程图纸风格：红色填充，黑色轮廓）
       const actualLobeCount = twistLobeCount || 4;
       
       // Do,max（峰顶外接圆）- 外径，与外管内径贴合
@@ -477,11 +480,11 @@ export function drawFrontView(canvas, params) {
       // Do,min（谷底内切圆）- 用于流通面积计算
       const rMin = innerTubeInnerRadius; // 内径
       
-      // 外梅花形状（Do,max外轮廓）
-      ctx.fillStyle = 'rgba(239, 68, 68, 0.25)';
+      // 外梅花形状（Do,max外轮廓）- 红色填充，黑色轮廓
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.8)'; // 红色填充，更不透明
       drawLobeShape(ctx, tubeX, tubeY, rMax, rMin, actualLobeCount);
       ctx.fill();
-      ctx.strokeStyle = '#ef4444';
+      ctx.strokeStyle = '#000000'; // 黑色轮廓
       ctx.lineWidth = 3;
       ctx.stroke();
       
@@ -491,10 +494,10 @@ export function drawFrontView(canvas, params) {
         const innerWallThicknessScaled = actualInnerWallThickness * scale;
         const innerRMin = Math.max(rMin - innerWallThicknessScaled, rMin * 0.5);
         if (innerRMin > 0) {
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.95)'; // 白色填充表示内部空间
           drawLobeShape(ctx, tubeX, tubeY, rMin, innerRMin, actualLobeCount);
           ctx.fill();
-          ctx.strokeStyle = '#f87171';
+          ctx.strokeStyle = '#000000'; // 黑色轮廓
           ctx.lineWidth = 2;
           ctx.stroke();
         }
@@ -534,39 +537,127 @@ export function drawFrontView(canvas, params) {
     ctx.setLineDash([]);
   }
   
-  // 添加尺寸标注
-  ctx.strokeStyle = '#6b7280';
+  // 添加尺寸标注（工程图纸风格：双箭头标注线）
+  ctx.strokeStyle = '#000000'; // 黑色标注线
   ctx.lineWidth = 1.5;
-  ctx.fillStyle = '#374151';
+  ctx.fillStyle = '#000000'; // 黑色文字
   ctx.font = 'bold 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
   ctx.textBaseline = 'middle';
   
-  // 外管外径标注（上方，居中显示）
+  // 辅助函数：绘制双箭头标注线
+  const drawDimensionLine = (x1, y1, x2, y2, label, offset = 0) => {
+    const arrowSize = 6;
+    const arrowAngle = Math.PI / 6;
+    
+    // 计算标注线方向
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    const angle = Math.atan2(dy, dx);
+    const perpAngle = angle + Math.PI / 2;
+    
+    // 计算偏移后的位置
+    const offsetX = Math.cos(perpAngle) * offset;
+    const offsetY = Math.sin(perpAngle) * offset;
+    
+    const lineX1 = x1 + offsetX;
+    const lineY1 = y1 + offsetY;
+    const lineX2 = x2 + offsetX;
+    const lineY2 = y2 + offsetY;
+    
+    // 绘制标注线
+    ctx.beginPath();
+    ctx.moveTo(lineX1, lineY1);
+    ctx.lineTo(lineX2, lineY2);
+    ctx.stroke();
+    
+    // 绘制左箭头
+    ctx.beginPath();
+    ctx.moveTo(lineX1, lineY1);
+    ctx.lineTo(lineX1 + arrowSize * Math.cos(angle - arrowAngle), lineY1 + arrowSize * Math.sin(angle - arrowAngle));
+    ctx.moveTo(lineX1, lineY1);
+    ctx.lineTo(lineX1 + arrowSize * Math.cos(angle + arrowAngle), lineY1 + arrowSize * Math.sin(angle + arrowAngle));
+    ctx.stroke();
+    
+    // 绘制右箭头
+    ctx.beginPath();
+    ctx.moveTo(lineX2, lineY2);
+    ctx.lineTo(lineX2 - arrowSize * Math.cos(angle - arrowAngle), lineY2 - arrowSize * Math.sin(angle - arrowAngle));
+    ctx.moveTo(lineX2, lineY2);
+    ctx.lineTo(lineX2 - arrowSize * Math.cos(angle + arrowAngle), lineY2 - arrowSize * Math.sin(angle + arrowAngle));
+    ctx.stroke();
+    
+    // 绘制文字（标注线中点）
+    const textX = (lineX1 + lineX2) / 2;
+    const textY = (lineY1 + lineY2) / 2;
+    const textOffset = offset > 0 ? 15 : -15;
+    ctx.textAlign = 'center';
+    ctx.fillText(label, textX + Math.cos(perpAngle) * textOffset, textY + Math.sin(perpAngle) * textOffset);
+  };
+  
+  // 外管外径标注（上方，居中显示，双箭头）
   const outerOuterRadiusScaledForLabel = outerOuterRad * scale;
-  const labelY = alignToPixel(Math.max(centerY - outerOuterRadiusScaledForLabel - 20, 30)); // 确保不超出顶部
-  ctx.beginPath();
-  ctx.moveTo(centerX, centerY - outerOuterRadiusScaledForLabel);
-  ctx.lineTo(centerX, labelY + 5);
-  ctx.moveTo(centerX - 30, labelY);
-  ctx.lineTo(centerX + 30, labelY);
-  ctx.stroke();
-  ctx.textAlign = 'center';
-  ctx.fillText(`Dₒ,out = ${(outerOuterRad * 2000).toFixed(1)} mm`, centerX, alignToPixel(labelY - 5));
-  ctx.textAlign = 'left';
+  const labelY = alignToPixel(Math.max(centerY - outerOuterRadiusScaledForLabel - 30, 30));
+  drawDimensionLine(
+    centerX - outerOuterRadiusScaledForLabel, labelY,
+    centerX + outerOuterRadiusScaledForLabel, labelY,
+    `Diameter ${(outerOuterRad * 2000).toFixed(0)} mm`,
+    -10
+  );
   
   // 内管外径标注（如果只有一根内管，标注在右侧）
-  if (innerTubeCount === 1) {
-    const maxLabelX = width - 20; // 确保不超出右边界
-    const labelX = alignToPixel(Math.min(centerX + innerTubeOuterRadius + 25, maxLabelX - 80));
-    ctx.beginPath();
-    ctx.moveTo(centerX + innerTubeOuterRadius, centerY);
-    ctx.lineTo(labelX, centerY);
-    ctx.moveTo(labelX, centerY - 5);
-    ctx.lineTo(labelX, centerY + 5);
-    ctx.stroke();
-    // 确保文字不超出边界，使用整数坐标
-    ctx.fillText(`Dᵢ,out = ${(innerOuterRad * 2000).toFixed(1)} mm`, alignToPixel(labelX + 5), centerY);
+  if (innerTubeCount === 1 && !actualIsTwisted) {
+    const maxLabelX = width - 20;
+    const labelX = alignToPixel(Math.min(centerX + innerTubeOuterRadius + 30, maxLabelX - 80));
+    drawDimensionLine(
+      centerX, centerY - innerTubeOuterRadius,
+      centerX, centerY + innerTubeOuterRadius,
+      `${(innerOuterRad * 2000).toFixed(0)} mm`,
+      30
+    );
   }
+  
+  // 如果是麻花管，添加高度标注（从峰到谷）
+  if (actualIsTwisted && innerTubeCount === 1) {
+    const actualLobeCount = twistLobeCount || 4;
+    const rMax = innerTubeOuterRadius;
+    // 计算谷底半径（基于齿高）
+    const rMin = rMax - (twistToothHeight * scale);
+    const heightInMm = twistToothHeight * 1000; // 转换为mm
+    
+    // 在右上角绘制高度标注
+    const labelAngle = -Math.PI / 2 + (Math.PI / actualLobeCount); // 第一个瓣的角度
+    const peakX = centerX + Math.cos(labelAngle) * rMax;
+    const peakY = centerY + Math.sin(labelAngle) * rMax;
+    const valleyX = centerX + Math.cos(labelAngle) * rMin;
+    const valleyY = centerY + Math.sin(labelAngle) * rMin;
+    
+    // 计算标注位置（在右上角）
+    const dimX = Math.min(centerX + rMax + 50, width - 80);
+    const dimY = centerY - rMax - 30;
+    
+    // 绘制引线（从峰和谷到标注线）
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]); // 虚线引线
+    ctx.beginPath();
+    ctx.moveTo(peakX, peakY);
+    ctx.lineTo(dimX - 25, dimY);
+    ctx.moveTo(valleyX, valleyY);
+    ctx.lineTo(dimX - 25, dimY + (rMax - rMin));
+    ctx.stroke();
+    ctx.setLineDash([]);
+    
+    // 绘制高度标注线（垂直双箭头）
+    drawDimensionLine(
+      dimX - 25, dimY,
+      dimX - 25, dimY + (rMax - rMin),
+      `Height ${heightInMm.toFixed(0)} mm`,
+      15
+    );
+  }
+  
+  ctx.textAlign = 'left';
   
   // 添加主要尺寸和参数标注
   ctx.fillStyle = '#374151';
@@ -575,8 +666,50 @@ export function drawFrontView(canvas, params) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
   
-  // 标题（顶部居中，确保在可见区域内，使用整数坐标）
-  ctx.fillText('单管截面图', centerX, alignToPixel(20));
+  // 标题（工程图纸风格）
+  ctx.fillStyle = '#000000';
+  ctx.font = 'bold 16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText('Engineering Drawing: Cross Section View', centerX, alignToPixel(10));
+  
+  // 如果是麻花管，添加数据框显示计算数据
+  if (actualIsTwisted && innerTubeCount === 1) {
+    // 计算间隙面积和等效圆直径
+    const outerInnerArea = Math.PI * outerInnerRad * outerInnerRad;
+    const actualLobeCount = twistLobeCount || 4;
+    const doMax = innerOuterRad * 2; // 麻花管外径
+    const doMin = (innerOuterRad - twistToothHeight) * 2; // 谷底直径
+    
+    try {
+      const lobeSection = calculateLobeCrossSection(doMax, doMin, actualLobeCount);
+      const gapArea = outerInnerArea - lobeSection.area; // 总间隙面积
+      const equivalentCircleDiameter = Math.sqrt(gapArea / Math.PI) * 2; // 等效圆直径
+      
+      // 绘制数据框（白色背景，黑色边框）
+      const boxX = alignToPixel(20);
+      const boxY = alignToPixel(height - bottomSpace - 60);
+      const boxWidth = 300;
+      const boxHeight = 50;
+      
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 2;
+      ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
+      ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
+      
+      // 绘制数据文字
+      ctx.fillStyle = '#000000';
+      ctx.font = '12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText(`Total Gap Area: ~${(gapArea * 1e6).toFixed(2)} mm²`, boxX + 10, boxY + 8);
+      ctx.fillText(`Equivalent Circle Diameter: ~${(equivalentCircleDiameter * 1000).toFixed(2)} mm`, boxX + 10, boxY + 28);
+    } catch (e) {
+      // 如果计算失败，跳过数据框
+      console.warn('无法计算麻花管几何数据:', e);
+    }
+  }
   
   // 主要尺寸标注（底部左侧，确保在可见区域内）
   ctx.textAlign = 'left';

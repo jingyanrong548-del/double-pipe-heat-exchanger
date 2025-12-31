@@ -361,6 +361,43 @@
                     </div>
                   </div>
                 </div>
+                
+                <!-- 麻花管几何说明图示 -->
+                <div class="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <h4 class="text-xs font-semibold text-blue-900 mb-3">麻花管几何说明</h4>
+                  <div class="mb-3">
+                    <img 
+                      id="plum-blossom-diagram" 
+                      src="/plum-blossom-diagram.png" 
+                      alt="34mm Circle with 6-Lobe Inscribed 'Plum Blossom' Shape"
+                      class="w-full max-w-md mx-auto border border-blue-300 rounded-lg shadow-sm"
+                      style="display: none;"
+                      onerror="this.style.display='none'; document.getElementById('diagram-fallback').style.display='block';"
+                    >
+                    <div id="diagram-fallback" class="text-xs text-blue-800 space-y-2" style="display: none;">
+                      <p class="font-semibold">麻花管几何说明：</p>
+                      <ul class="list-disc list-inside space-y-1 ml-2">
+                        <li><span class="font-medium">外圆（黑色）</span>：代表直径34mm的外管内径</li>
+                        <li><span class="font-medium">梅花形状（红色）</span>：内切的6瓣梅花形状</li>
+                        <li><span class="font-medium">空隙区域（天蓝色）</span>：外圆与梅花形状之间的6个空隙</li>
+                        <li><span class="font-medium">深度3mm</span>：从外圆表面到梅花凹槽底部的深度</li>
+                        <li><span class="font-medium">总空隙面积</span>：约149.62 mm²</li>
+                        <li><span class="font-medium">等效圆直径</span>：约13.80 mm</li>
+                      </ul>
+                      <p class="text-xs text-blue-600 mt-2">
+                        <span class="font-semibold">计算方法：</span>空隙面积 = 外圆面积 - 梅花形状面积
+                      </p>
+                    </div>
+                  </div>
+                  <div class="text-xs text-blue-700 bg-white p-2 rounded border border-blue-200">
+                    <p class="font-semibold mb-1">空隙面积计算逻辑：</p>
+                    <p>代码中使用 <code class="bg-blue-100 px-1 rounded text-xs">空隙面积 = 外圆面积 - 梅花形状面积</code> 的方法，其中：</p>
+                    <ul class="list-disc list-inside space-y-1 ml-2 mt-1">
+                      <li>外圆面积 = π × (外管内径/2)²</li>
+                      <li>梅花形状面积 = calculateLobeCrossSection(doMax, doMin, lobeCount).area</li>
+                    </ul>
+                  </div>
+                </div>
               </div>
               
               <!-- 通用参数 -->
@@ -581,6 +618,9 @@
                   </div>
                 </div>
               </div>
+              
+              <!-- 麻花管几何属性（仅麻花管时显示） -->
+              <div id="twisted-geometry-info" class="mt-6 mb-4 hidden"></div>
               
               <!-- 热阻分配比例 -->
               <div class="mt-6 mb-4">

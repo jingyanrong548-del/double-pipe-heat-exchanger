@@ -7,6 +7,7 @@ import { calculateHeatExchanger, calculateLobeCrossSection } from './heat_exchan
 import { updateVisualization, drawTemperatureDistribution } from './visualization.js';
 import { getMaterialInfo } from './materials.js';
 import { getTwistedTubePreset } from './twisted_tube_presets.js';
+import { TwistedTubeGeometry } from './twisted_tube_geometry.js';
 
 /**
  * 获取表单输入值
@@ -361,6 +362,14 @@ export function showResults(results) {
     el.style.display = '';
   });
 
+  // 添加调试日志 - 检查 results 对象
+  console.log('[showResults] 计算结果对象:', {
+    isTwisted: results.isTwisted,
+    innerTubeType: results.innerTubeType,
+    success: results.success,
+    hasEnhancementFactor: !!results.enhancementFactor
+  });
+
   // 更新结果值
   const formatNumber = (num, decimals = 2) => {
     if (isNaN(num) || !isFinite(num)) return '-';
@@ -560,6 +569,168 @@ export function showResults(results) {
   }
   
   // 显示麻花管增强系数（如果适用）
+  // 显示麻花管几何属性（使用新的几何计算类）
+  // 添加更详细的调试信息
+  console.log('[几何属性] 检查条件:', {
+    'results.isTwisted': results.isTwisted,
+    'typeof results.isTwisted': typeof results.isTwisted,
+    'results.innerTubeType': results.innerTubeType,
+    '条件满足': !!results.isTwisted
+  });
+  
+  if (results.isTwisted) {
+    console.log('[几何属性] ✓ 条件满足，开始计算麻花管几何属性');
+    try {
+      const formData = getFormData();
+      console.log('[几何属性] 表单数据:', {
+        outerInnerDiameter: formData.outerInnerDiameter,
+        twistLobeCount: formData.twistLobeCount,
+        twistToothHeight: formData.twistToothHeight,
+        twistPitch: formData.twistPitch,
+        isTwisted: formData.isTwisted,
+        innerTubeType: formData.innerTubeType
+      });
+      
+      const outerDiameter = formData.outerInnerDiameter || 0.034; // 麻花管外径 = 外管内径
+      const numLobes = formData.twistLobeCount || 6;
+      const lobeHeight = formData.twistToothHeight || 0.003;
+      const spiralPitch = formData.twistPitch || 0.0065;
+      
+      console.log('[几何属性] 计算参数:', {
+        outerDiameter,
+        numLobes,
+        lobeHeight,
+        spiralPitch
+      });
+      
+      // 使用新的几何计算类
+      const tubeGeometry = new TwistedTubeGeometry(
+        outerDiameter,
+        numLobes,
+        lobeHeight,
+        spiralPitch
+      );
+      
+      const geometryProps = tubeGeometry.calculateCrossSectionProperties();
+      console.log('[几何属性] 计算结果:', geometryProps);
+      
+      // 显示几何属性
+      const geometryInfoEl = document.getElementById('twisted-geometry-info');
+      
+      if (geometryInfoEl) {
+        console.log('[几何属性] 元素查找:', {
+          found: !!geometryInfoEl,
+          elementId: 'twisted-geometry-info',
+          currentClass: geometryInfoEl.className,
+          parentElement: geometryInfoEl.parentElement?.id || 'N/A'
+        });
+        
+        // 先设置内容
+        geometryInfoEl.innerHTML = `
+          <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
+            <h4 class="text-sm font-semibold text-blue-900 mb-3">麻花管几何属性</h4>
+            <div class="grid grid-cols-2 gap-3 text-xs">
+              <div>
+                <span class="text-gray-600">截面面积:</span>
+                <span class="font-bold text-blue-700 ml-1">${(geometryProps.area * 1e6).toFixed(2)} mm²</span>
+              </div>
+              <div>
+                <span class="text-gray-600">当量直径:</span>
+                <span class="font-bold text-blue-700 ml-1">${(geometryProps.equivalentDiameter * 1000).toFixed(2)} mm</span>
+              </div>
+              <div>
+                <span class="text-gray-600">截面周长:</span>
+                <span class="font-bold text-blue-700 ml-1">${(geometryProps.perimeter * 1000).toFixed(2)} mm</span>
+              </div>
+              <div>
+                <span class="text-gray-600">螺旋长度因子:</span>
+                <span class="font-bold text-blue-700 ml-1">${tubeGeometry.helicalLengthFactor.toFixed(3)}</span>
+              </div>
+            </div>
+          </div>
+        `;
+        
+        // 然后移除hidden类并显式设置display样式
+        geometryInfoEl.classList.remove('hidden');
+        geometryInfoEl.style.display = 'block'; // 显式设置display
+        
+        // 确保元素可见 - 使用 !important 覆盖任何可能的CSS规则
+        geometryInfoEl.style.setProperty('display', 'block', 'important');
+        
+        console.log('[几何属性] ✓ 显示成功，已移除hidden类并设置display');
+        console.log('[几何属性] 元素状态（立即检查）:', {
+          hasHiddenClass: geometryInfoEl.classList.contains('hidden'),
+          displayStyle: geometryInfoEl.style.display,
+          computedDisplay: window.getComputedStyle(geometryInfoEl).display,
+          visibility: window.getComputedStyle(geometryInfoEl).visibility,
+          opacity: window.getComputedStyle(geometryInfoEl).opacity,
+          innerHTMLLength: geometryInfoEl.innerHTML.length,
+          offsetHeight: geometryInfoEl.offsetHeight,
+          offsetWidth: geometryInfoEl.offsetWidth
+        });
+        
+        // 使用 requestAnimationFrame 等待DOM更新后再检查
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            const finalHeight = geometryInfoEl.offsetHeight;
+            const finalWidth = geometryInfoEl.offsetWidth;
+            
+            console.log('[几何属性] 元素状态（延迟检查）:', {
+              offsetHeight: finalHeight,
+              offsetWidth: finalWidth,
+              computedDisplay: window.getComputedStyle(geometryInfoEl).display,
+              innerHTMLLength: geometryInfoEl.innerHTML.length,
+              firstChild: geometryInfoEl.firstElementChild ? geometryInfoEl.firstElementChild.tagName : 'none'
+            });
+            
+            if (finalHeight === 0 || finalWidth === 0) {
+              console.warn('[几何属性] ⚠️ 警告：元素尺寸仍为0，尝试强制显示');
+              // 尝试强制设置最小高度
+              geometryInfoEl.style.setProperty('min-height', '100px', 'important');
+              geometryInfoEl.style.setProperty('min-width', '100px', 'important');
+              
+              // 再次检查
+              setTimeout(() => {
+                if (geometryInfoEl.offsetHeight === 0) {
+                  console.error('[几何属性] ✗ 元素仍然不可见，可能需要检查HTML结构');
+                  // 尝试直接操作子元素
+                  const firstChild = geometryInfoEl.firstElementChild;
+                  if (firstChild) {
+                    firstChild.style.setProperty('display', 'block', 'important');
+                    console.log('[几何属性] 已强制设置子元素display');
+                  }
+                }
+              }, 50);
+            } else {
+              console.log('[几何属性] ✓ 元素尺寸正常，应该可见');
+            }
+          }, 10);
+        });
+      } else {
+        console.error('[几何属性] ✗ 未找到元素 twisted-geometry-info');
+      }
+    } catch (e) {
+      console.error('[几何属性] ✗ 计算失败:', e);
+      console.error('[几何属性] 错误堆栈:', e.stack);
+      const geometryInfoEl = document.getElementById('twisted-geometry-info');
+      if (geometryInfoEl) {
+        geometryInfoEl.classList.add('hidden');
+        geometryInfoEl.style.display = 'none';
+        geometryInfoEl.innerHTML = '';
+      }
+    }
+  } else {
+    console.log('[几何属性] ✗ 非麻花管模式，跳过几何属性计算');
+    console.log('[几何属性] 原因: results.isTwisted =', results.isTwisted);
+    // 非麻花管时隐藏几何信息
+    const geometryInfoEl = document.getElementById('twisted-geometry-info');
+    if (geometryInfoEl) {
+      geometryInfoEl.classList.add('hidden');
+      geometryInfoEl.style.display = 'none'; // 显式设置display
+      geometryInfoEl.innerHTML = ''; // 清空内容
+    }
+  }
+  
   if (results.isTwisted && results.enhancementFactor) {
     const enhancementInfo = document.createElement('div');
     enhancementInfo.className = 'mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-xl';
@@ -658,6 +829,71 @@ export function showResults(results) {
       }
     }
   }
+  
+  // 确保麻花管几何属性元素可见（最终检查）
+  if (results.isTwisted) {
+    // 使用 setTimeout 确保在所有DOM操作完成后执行
+    setTimeout(() => {
+      const geometryInfoEl = document.getElementById('twisted-geometry-info');
+      if (geometryInfoEl && geometryInfoEl.innerHTML.trim() !== '') {
+        // 再次确保元素可见
+        geometryInfoEl.classList.remove('hidden');
+        geometryInfoEl.style.setProperty('display', 'block', 'important');
+        geometryInfoEl.style.setProperty('visibility', 'visible', 'important');
+        geometryInfoEl.style.setProperty('opacity', '1', 'important');
+        geometryInfoEl.style.setProperty('position', 'relative', 'important');
+        geometryInfoEl.style.setProperty('z-index', '10', 'important');
+        
+        // 确保子元素也可见
+        const firstChild = geometryInfoEl.firstElementChild;
+        if (firstChild) {
+          firstChild.style.setProperty('display', 'block', 'important');
+        }
+        
+        // 获取元素位置信息
+        const rect = geometryInfoEl.getBoundingClientRect();
+        const isInViewport = rect.top >= 0 && rect.left >= 0 && 
+                            rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&
+                            rect.right <= (window.innerWidth || document.documentElement.clientWidth);
+        
+        console.log('[几何属性] 最终检查：确保元素可见', {
+          offsetHeight: geometryInfoEl.offsetHeight,
+          offsetWidth: geometryInfoEl.offsetWidth,
+          hasContent: geometryInfoEl.innerHTML.trim().length > 0,
+          rect: {
+            top: rect.top,
+            left: rect.left,
+            bottom: rect.bottom,
+            right: rect.right,
+            width: rect.width,
+            height: rect.height
+          },
+          isInViewport: isInViewport,
+          scrollY: window.scrollY,
+          windowHeight: window.innerHeight
+        });
+        
+        // 如果元素不在视口中，滚动到元素位置
+        if (!isInViewport && geometryInfoEl.offsetHeight > 0) {
+          geometryInfoEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          console.log('[几何属性] 已滚动到元素位置');
+        }
+        
+        // 额外检查：确保元素在DOM中的位置正确
+        const parent = geometryInfoEl.parentElement;
+        const nextSibling = geometryInfoEl.nextElementSibling;
+        const prevSibling = geometryInfoEl.previousElementSibling;
+        
+        console.log('[几何属性] DOM位置检查:', {
+          parentId: parent ? parent.id : 'none',
+          nextSibling: nextSibling ? nextSibling.id || nextSibling.className : 'none',
+          prevSibling: prevSibling ? prevSibling.id || prevSibling.className : 'none',
+          parentDisplay: parent ? window.getComputedStyle(parent).display : 'none',
+          parentVisibility: parent ? window.getComputedStyle(parent).visibility : 'none'
+        });
+      }
+    }, 100);
+  }
 }
 
 /**
@@ -680,6 +916,16 @@ export async function performCalculation() {
   try {
     // 获取表单数据
     const formData = getFormData();
+    
+    // 添加调试日志
+    console.log('[performCalculation] 表单数据:', {
+      innerTubeType: formData.innerTubeType,
+      isTwisted: formData.isTwisted,
+      twistLobeCount: formData.twistLobeCount,
+      twistPitch: formData.twistPitch,
+      twistToothHeight: formData.twistToothHeight,
+      outerInnerDiameter: formData.outerInnerDiameter
+    });
 
     // 验证数据
     const validation = validateFormData(formData);
@@ -737,11 +983,21 @@ export async function performCalculation() {
       tubeMaterial: formData.innerTubeMaterial,  // 内管材质
       foulingInner: formData.foulingInner,  // 管内污垢热阻
       foulingOuter: formData.foulingOuter,  // 管外污垢热阻
-      hotFluidLocation: formData.hotFluidLocation  // 热流体位置
+      hotFluidLocation: formData.hotFluidLocation,  // 热流体位置
+      passCount: formData.passCount,
+      outerTubeCountPerPass: formData.outerTubeCountPerPass
     });
 
     // 恢复按钮状态
     setCalculateButtonState(true, '计算');
+    
+    // 添加调试日志
+    console.log('[performCalculation] 计算结果:', {
+      success: results.success,
+      isTwisted: results.isTwisted,
+      innerTubeType: results.innerTubeType,
+      hasEnhancementFactor: !!results.enhancementFactor
+    });
 
     // 显示结果
     if (results.success) {

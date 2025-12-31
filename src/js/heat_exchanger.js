@@ -529,23 +529,20 @@ export async function calculateOverallHeatTransferCoefficient(
   // 如果是麻花管，需要使用梅花截面的当量直径来计算
   if (isTwisted) {
     // 麻花管几何参数（基于技术文档的定义）
-    // Do,max（峰顶外接圆）= 麻花管内径（管内径）
-    // innerInnerDiameter 应该是麻花管内径
-    const doMax = innerInnerDiameter; // 使用麻花管内径作为管内梅花截面的峰顶直径
-    // Do,min（谷底内切圆）= Do,max - 2*h，其中h为齿高
-    // 使用用户输入的齿高准确计算
-    const doMin = doMax - 2 * twistToothHeight;
+    // 对于管内流动：Do,max（峰顶外接圆）= 麻花管内径（管内径）
+    const innerDoMax = innerInnerDiameter; // 管内梅花截面的峰顶直径
+    const innerDoMin = innerDoMax - 2 * twistToothHeight; // 管内梅花截面的谷底直径
     
-    // 计算梅花截面的几何参数
-    const lobeSection = calculateLobeCrossSection(doMax, doMin, twistLobeCount);
+    // 计算管内梅花截面的几何参数
+    const innerLobeSection = calculateLobeCrossSection(innerDoMax, innerDoMin, twistLobeCount);
     
     // 使用梅花截面的当量直径计算内管流速和雷诺数
     const flowRatePerTube = hotFlowRate / innerTubeCount;
-    const innerVelocity = flowRatePerTube / (hotProps.density * lobeSection.area);
+    const innerVelocity = flowRatePerTube / (hotProps.density * innerLobeSection.area);
     const innerRe = calculateReynoldsNumber(
       hotProps.density,
       innerVelocity,
-      lobeSection.equivalentDiameter,
+      innerLobeSection.equivalentDiameter,
       hotProps.viscosity
     );
     const innerNu = calculateNusseltNumber(innerRe, hotProps.prandtl, false);
@@ -553,26 +550,38 @@ export async function calculateOverallHeatTransferCoefficient(
     const hi = calculateConvectiveHeatTransferCoefficient(
       innerNu,
       hotProps.thermalConductivity,
-      lobeSection.equivalentDiameter
+      innerLobeSection.equivalentDiameter
     );
     
-    // 环形通道流通面积应该基于谷底（doMin）计算，而不是峰顶（doMax）
-    // 因为螺旋通道是由谷底与外管内壁之间的间隙形成的
-    const outerInnerRadius = outerInnerDiameter / 2;
-    const rMin = doMin / 2; // 谷底半径
+    // 环形通道流通面积计算（考虑安装间隙）
+    // 空隙面积 = 外圆面积 - 梅花形状面积
+    // 外圆直径 = 外管内径（outerInnerDiameter，已考虑安装间隙）
+    // 对于管外（环形空间）：梅花截面的doMax应该是麻花管外径（innerOuterDiameter），不是外管内径
+    const outerDoMax = innerOuterDiameter; // 管外梅花截面的峰顶直径（麻花管外径）
+    const outerDoMin = outerDoMax - 2 * twistToothHeight; // 管外梅花截面的谷底直径
     
-    // 螺旋通道的流通面积 = 外管内径圆面积 - 麻花管谷底内切圆面积
-    const rawAnnulusArea = Math.PI * Math.pow(outerInnerRadius, 2) - Math.PI * Math.pow(rMin, 2);
+    // 外圆半径使用实际外管内径（考虑安装间隙）
+    const outerInnerRadius = outerInnerDiameter / 2; // outerInnerDiameter已考虑间隙
+    const outerCircleArea = Math.PI * Math.pow(outerInnerRadius, 2); // 外圆面积
+    
+    // 计算管外梅花截面的几何参数（用于确定梅花形状面积）
+    // 注意：梅花截面的doMax应该是麻花管外径，不是外管内径
+    const outerLobeSection = calculateLobeCrossSection(outerDoMax, outerDoMin, twistLobeCount);
+    const plumBlossomArea = outerLobeSection.area; // 梅花形状面积
+    
+    // 空隙面积 = 外圆面积 - 梅花形状面积
+    const rawAnnulusArea = outerCircleArea - plumBlossomArea;
     
     // 考虑螺旋通道的实际有效流通面积
     // 由于是螺旋形，实际流通面积可能略小于横截面积
-    const spiralChannelFactor = Math.max(0.8, Math.min(0.95, 1 - 0.05 * (0.1 / twistPitch)));
+    const spiralChannelFactor = Math.max(0.9, Math.min(1.0, 1 - 0.01 * (0.1 / twistPitch)));
     const annulusArea = rawAnnulusArea * spiralChannelFactor;
     
     // 计算当量直径和湿周
-    const outerPerimeter = Math.PI * outerInnerDiameter;
+    // 外圆周长使用实际外管内径（考虑安装间隙）
+    const outerPerimeter = Math.PI * outerInnerDiameter; // outerInnerDiameter已考虑间隙
     // 麻花管谷底周长（考虑梅花截面）
-    const innerValleyPerimeter = lobeSection.perimeter;
+    const innerValleyPerimeter = outerLobeSection.perimeter;
     // 当量直径：Dh = 4 * A / (P_outer + P_inner_valley)
     const hydraulicDiameter = (4 * annulusArea) / (outerPerimeter + innerValleyPerimeter);
     
@@ -604,8 +613,8 @@ export async function calculateOverallHeatTransferCoefficient(
     
     // 计算传热面积（使用Do,max的周长，因为这是与外管接触的外表面）
     // 同时考虑螺旋增加的面积
-    const baseContactPerimeter = Math.PI * doMax;
-    const spiralLength = length * Math.sqrt(1 + Math.pow(Math.PI * doMax / twistPitch, 2));
+    const baseContactPerimeter = Math.PI * outerDoMax;
+    const spiralLength = length * Math.sqrt(1 + Math.pow(Math.PI * outerDoMax / twistPitch, 2));
     const totalInnerArea = baseContactPerimeter * spiralLength;
     const outerArea = Math.PI * outerOuterDiameter * length;
     const areaRatio = totalInnerArea / outerArea;
@@ -616,7 +625,7 @@ export async function calculateOverallHeatTransferCoefficient(
     
     if (innerWallThickness && innerWallThickness > 0) {
       // 对于麻花管，使用Do,max计算平均直径
-      const meanDiameter = (doMax + innerInnerDiameter) / 2;
+      const meanDiameter = (outerDoMax + innerInnerDiameter) / 2;
       const meanArea = Math.PI * meanDiameter * length * innerTubeCount;
       R_wall = innerWallThickness / (tubeThermalConductivity * meanArea);
     }
@@ -1124,6 +1133,165 @@ export function calculateAnnulusPressureDrop(
 }
 
 /**
+ * 计算冷凝过程的分段压降（过热段 + 过冷段）
+ * @param {Object} vaporProps - 过热气体物性（进口）
+ * @param {Object} liquidProps - 过冷液体物性（出口）
+ * @param {number} flowRate - 质量流量 (kg/s)
+ * @param {number} annulusArea - 环形空间流通面积 (m²)
+ * @param {number} hydraulicDiameter - 当量直径 (m)
+ * @param {number} singleTubeLength - 单管长度 (m)（不是总长度，总长度 = 单管长度 × 流程数量）
+ * @param {number} saturationTemp - 饱和温度 (K)
+ * @param {number} tempIn - 进口温度 (K)
+ * @param {number} tempOut - 出口温度 (K)
+ * @param {number} passCount - 流程数量（用于计算总长度）
+ * @param {number} relativeRoughness - 相对粗糙度
+ * @returns {Object} {pressureDrop: 总压降 (Pa), pressureDrop_kPa: 总压降 (kPa), 
+ *                     superheatedDrop: 过热段压降 (Pa), subcooledDrop: 过冷段压降 (Pa),
+ *                     velocityIn: 进口流速 (m/s), velocityOut: 出口流速 (m/s),
+ *                     frictionFactor: 平均摩擦系数}
+ */
+export function calculateCondensationPressureDrop(
+  vaporProps,
+  liquidProps,
+  flowRate,
+  annulusArea,
+  hydraulicDiameter,
+  singleTubeLength,
+  saturationTemp,
+  tempIn,
+  tempOut,
+  passCount = 1,
+  relativeRoughness = 0.0001
+) {
+  // 计算总长度（单管长度 × 流程数量）
+  const totalLength = singleTubeLength * passCount;
+  
+  // 计算进口和出口流速
+  const velocityIn = flowRate / (vaporProps.density * annulusArea);
+  const velocityOut = flowRate / (liquidProps.density * annulusArea);
+  
+  // 计算过热段和过冷段的长度比例
+  // 假设温度线性分布
+  const tempRange = tempIn - tempOut;
+  if (tempRange <= 0) {
+    // 如果温度范围无效，使用单相流计算
+    const re = calculateReynoldsNumber(
+      vaporProps.density,
+      velocityIn,
+      hydraulicDiameter,
+      vaporProps.viscosity
+    );
+    const f = calculateFrictionFactor(re, relativeRoughness);
+    // 使用总长度计算压降
+    const pressureDrop = f * (totalLength / hydraulicDiameter) * 
+                         (vaporProps.density * velocityIn * velocityIn / 2);
+    return {
+      pressureDrop: pressureDrop,
+      pressureDrop_kPa: pressureDrop / 1000,
+      superheatedDrop: pressureDrop,
+      subcooledDrop: 0,
+      velocityIn: velocityIn,
+      velocityOut: velocityOut,
+      frictionFactor: f
+    };
+  }
+  
+  // 计算过热段和过冷段的长度（基于温度线性分布假设）
+  // 注意：分段长度是基于单管长度计算的，然后乘以流程数量得到总分段长度
+  // 如果进口温度低于饱和温度，说明没有过热段
+  const superheatedLength = tempIn > saturationTemp ? 
+    singleTubeLength * (tempIn - saturationTemp) / tempRange : 0;
+  // 如果出口温度高于饱和温度，说明没有过冷段
+  const subcooledLength = tempOut < saturationTemp ? 
+    singleTubeLength * (saturationTemp - tempOut) / tempRange : 0;
+  
+  // 确保分段长度之和不超过单管长度（考虑数值误差）
+  const totalSegmentLength = superheatedLength + subcooledLength;
+  const actualSuperheatedLength = totalSegmentLength > singleTubeLength * 1.01 ? 
+    superheatedLength * (singleTubeLength / totalSegmentLength) : superheatedLength;
+  const actualSubcooledLength = totalSegmentLength > singleTubeLength * 1.01 ? 
+    subcooledLength * (singleTubeLength / totalSegmentLength) : subcooledLength;
+  
+  // 如果过热段或过冷段长度为0，使用单相流计算
+  if (actualSuperheatedLength <= 0 && actualSubcooledLength <= 0) {
+    // 使用平均物性
+    const avgDensity = (vaporProps.density + liquidProps.density) / 2;
+    const avgVelocity = (velocityIn + velocityOut) / 2;
+    const avgViscosity = (vaporProps.viscosity + liquidProps.viscosity) / 2;
+    const re = calculateReynoldsNumber(avgDensity, avgVelocity, hydraulicDiameter, avgViscosity);
+    const f = calculateFrictionFactor(re, relativeRoughness);
+    // 使用总长度计算压降
+    const pressureDrop = f * (totalLength / hydraulicDiameter) * 
+                         (avgDensity * avgVelocity * avgVelocity / 2);
+    return {
+      pressureDrop: pressureDrop,
+      pressureDrop_kPa: pressureDrop / 1000,
+      superheatedDrop: pressureDrop,
+      subcooledDrop: 0,
+      velocityIn: velocityIn,
+      velocityOut: velocityOut,
+      frictionFactor: f
+    };
+  }
+  
+  let superheatedDrop = 0;
+  let subcooledDrop = 0;
+  let fSuperheated = 0;
+  let fSubcooled = 0;
+  
+  // 计算过热段压降（气体单相流）
+  if (actualSuperheatedLength > 0) {
+    const reSuperheated = calculateReynoldsNumber(
+      vaporProps.density,
+      velocityIn,
+      hydraulicDiameter,
+      vaporProps.viscosity
+    );
+    fSuperheated = calculateFrictionFactor(reSuperheated, relativeRoughness);
+    // 使用实际分段长度计算压降（单管分段长度 × 流程数量 = 总分段长度）
+    const totalSuperheatedLength = actualSuperheatedLength * passCount;
+    superheatedDrop = fSuperheated * (totalSuperheatedLength / hydraulicDiameter) * 
+                      (vaporProps.density * velocityIn * velocityIn / 2);
+  }
+  
+  // 计算过冷段压降（液体单相流）
+  if (actualSubcooledLength > 0) {
+    const reSubcooled = calculateReynoldsNumber(
+      liquidProps.density,
+      velocityOut,
+      hydraulicDiameter,
+      liquidProps.viscosity
+    );
+    fSubcooled = calculateFrictionFactor(reSubcooled, relativeRoughness);
+    // 使用实际分段长度计算压降（单管分段长度 × 流程数量 = 总分段长度）
+    const totalSubcooledLength = actualSubcooledLength * passCount;
+    subcooledDrop = fSubcooled * (totalSubcooledLength / hydraulicDiameter) * 
+                    (liquidProps.density * velocityOut * velocityOut / 2);
+  }
+  
+  // 总压降
+  const totalPressureDrop = superheatedDrop + subcooledDrop;
+  
+  // 平均摩擦系数（加权平均）
+  const totalLengthForF = actualSuperheatedLength + actualSubcooledLength;
+  const avgFrictionFactor = totalLengthForF > 0 ? 
+    (fSuperheated * actualSuperheatedLength + fSubcooled * actualSubcooledLength) / totalLengthForF :
+    (fSuperheated + fSubcooled) / 2;
+  
+  return {
+    pressureDrop: totalPressureDrop,
+    pressureDrop_kPa: totalPressureDrop / 1000,
+    superheatedDrop: superheatedDrop,
+    subcooledDrop: subcooledDrop,
+    velocityIn: velocityIn,
+    velocityOut: velocityOut,
+    frictionFactor: avgFrictionFactor,
+    superheatedLength: actualSuperheatedLength,
+    subcooledLength: actualSubcooledLength
+  };
+}
+
+/**
  * 计算两相流压降（Lockhart-Martinelli方法）
  * @param {Object} liquidProps - 饱和液体物性
  * @param {Object} vaporProps - 饱和蒸汽物性
@@ -1185,11 +1353,22 @@ export function calculateTwoPhasePressureDrop(
   // 两相流倍增因子
   const phiL2 = 1 + C / X + 1 / (X * X);
   
+  // 修正：当X非常小时，phiL2会变得非常大，导致压降被严重高估
+  // 对于冷凝过程，需要限制phiL2的最大值
+  // 根据工程经验，两相流压降通常是单相流压降的2-10倍，不应该超过20倍
+  const maxPhiL2 = 20; // 限制最大倍增因子
+  const limitedPhiL2 = Math.min(maxPhiL2, phiL2);
+  
+  // 如果被限制，记录警告
+  if (limitedPhiL2 < phiL2) {
+    console.warn(`[两相流压降计算] 倍增因子被限制: ${phiL2.toFixed(2)} -> ${limitedPhiL2} (X=${X.toFixed(4)})`);
+  }
+  
   // 两相流压降（以液体为基准）
-  const deltaPTP = phiL2 * deltaPL;
+  const deltaPTP = limitedPhiL2 * deltaPL;
   
   // 等效摩擦系数（用于显示）
-  const equivFrictionFactor = fL * phiL2;
+  const equivFrictionFactor = fL * limitedPhiL2;
   
   return {
     pressureDrop: deltaPTP,
@@ -1392,17 +1571,30 @@ export async function calculateHeatExchanger(params) {
   // 确保isTwisted与innerTubeType一致
   const actualIsTwisted = innerTubeType === 'twisted' || isTwisted;
   
+  // 考虑内管与外管之间的安装间隙
+  // 一般内管外径与外管内径之间有0.5mm的间隙（单边），即总间隙为1mm
+  const installationGap = 0.0005; // 0.5mm 单边间隙 (m)
+  const totalGap = 2 * installationGap; // 1mm 总间隙 (m)
+  
+  // 实际用于计算的外管内径 = 内管外径 + 总间隙
+  // 这样可以确保环形空间计算时考虑了安装间隙
+  const effectiveOuterInnerDiameter = innerDiameter + totalGap;
+  
   // 麻花管模式下，确定实际的几何参数
-  let actualInnerOuterDiameter = innerDiameter; // 用于传热面积
+  let actualInnerOuterDiameter = innerDiameter; // 用于传热面积（内管外径）
   let actualInnerInnerDiameter = innerInnerDiameter; // 用于流速计算
   
   if (actualIsTwisted) {
-    // 麻花管外径等于外管内径（贴合状态）
-    actualInnerOuterDiameter = twistOuterDiameter || outerInnerDiameter;
+    // 麻花管外径 = 内管外径（用户输入值）
+    actualInnerOuterDiameter = twistOuterDiameter || innerDiameter;
     // 麻花管内径 = 外径 - 2×壁厚
     const wallThickness = twistWallThickness || (innerDiameter - innerInnerDiameter) / 2;
     actualInnerInnerDiameter = actualInnerOuterDiameter - 2 * wallThickness;
   }
+  
+  // 使用有效外管内径（考虑间隙）进行环形空间计算
+  // 注意：effectiveOuterInnerDiameter = actualInnerOuterDiameter + totalGap
+  const annulusOuterInnerDiameter = actualInnerOuterDiameter + totalGap;
 
   try {
     // 1. 根据输入模式计算传热量和流量
@@ -1595,10 +1787,10 @@ export async function calculateHeatExchanger(params) {
       heatTransferResult = await calculateOverallHeatTransferCoefficient(
         hotProps,
         coldProps,
-        actualInnerOuterDiameter, // 内管外径（麻花管模式下等于外管内径）
+        actualInnerOuterDiameter, // 内管外径
         outerDiameter, // 外管外径
         actualInnerInnerDiameter, // 内管内径（麻花管模式下重新计算）
-        outerInnerDiameter, // 外管内径
+        annulusOuterInnerDiameter, // 外管内径（用于环形空间计算，考虑安装间隙）
         actualHotFlowRate,  // 使用实际流量（可能是计算值）
         actualColdFlowRate, // 使用实际流量（可能是计算值）
         length,
@@ -1950,9 +2142,13 @@ export async function calculateHeatExchanger(params) {
           // 如果已经有干度值，使用平均值
           coldQualityAvg = ((calcColdQualityIn || 0) + (calcColdQualityOut || 0)) / 2;
         } else if (isCondensation) {
-          // 冷凝过程：从气体(1)到液体(0)，平均干度约为0.5
-          // 但考虑到入口是过热气体，出口是过冷液体，实际两相流段的平均干度应该更接近0.5
-          coldQualityAvg = 0.5;
+          // 修正：对于冷凝过程（过热气体→过冷液体），不应该使用平均干度0.5
+          // 因为入口和出口都是单相，只有中间段是两相流
+          // 对于压降计算，使用更保守的方法：使用较小的平均干度（0.3-0.4）
+          // 或者，对于冷凝过程，应该使用单相流计算（基于平均物性）
+          // 这里使用0.3作为保守估计，避免压降被严重高估
+          coldQualityAvg = 0.3;
+          console.warn('[环形空间压降计算] 冷凝过程使用修正的平均干度:', coldQualityAvg, '（原值0.5会导致压降严重偏大）');
         }
       }
       
@@ -1973,27 +2169,27 @@ export async function calculateHeatExchanger(params) {
       
       if (actualIsTwisted) {
         // 麻花管模式：考虑螺旋通道特性
-        // Do,max（峰顶外接圆）= 外管内径（贴合状态）
-        const doMax = outerInnerDiameter;
+        // Do,max（峰顶外接圆）= 实际外管内径（考虑安装间隙）
+        // 外管内径 = 麻花管外径 + 总间隙
+        const doMax = annulusOuterInnerDiameter;
         // Do,min（谷底内切圆）：使用齿高准确计算
-        // doMin = doMax - 2 * 齿高
-        const doMin = doMax - 2 * (twistToothHeight || 0.003); // 默认3mm
+        // doMin = 麻花管外径 - 2 * 齿高（注意：这里使用麻花管外径，不是外管内径）
+        const innerOuterDiameter = actualInnerOuterDiameter; // 麻花管外径
+        const doMin = innerOuterDiameter - 2 * (twistToothHeight || 0.003); // 默认3mm
         
-        // 计算梅花截面参数（用于确定湿周）
+        // 环形通道流通面积计算（正确方法）
+        // 空隙面积 = 外圆面积 - 梅花形状面积
+        // 外圆直径 = 外管内径（doMax，考虑安装间隙）
+        // 梅花形状面积通过calculateLobeCrossSection计算（使用麻花管外径和doMin）
+        const outerInnerRadius = annulusOuterInnerDiameter / 2;
+        const outerCircleArea = Math.PI * Math.pow(outerInnerRadius, 2); // 外圆面积
+        
+        // 计算梅花截面的几何参数（用于确定梅花形状面积和湿周）
         const lobeSection = calculateLobeCrossSection(doMax, doMin, twistLobeCount);
+        const plumBlossomArea = lobeSection.area; // 梅花形状面积
         
-        // 环形通道流通面积计算
-        // 麻花管是贴合在外管内壁上的，峰顶接触外管内壁，形成螺旋通道
-        // 对于螺旋通道，环形通道流通面积应该基于间隙计算
-        // 工程实际：环形通道是在麻花管谷底与外管内壁之间的间隙中形成的螺旋通道
-        // 使用"周长 × 间隙"的方法更符合螺旋通道的实际几何
-        const gap = (doMax - doMin) / 2; // 平均间隙 = (峰顶 - 谷底) / 2
-        const perimeter = Math.PI * outerInnerDiameter; // 外管内径圆周长
-        
-        // 环形通道流通面积 = 外管内径圆周长 × 平均间隙
-        // 这是对螺旋通道流通面积的合理近似
-        // 对于贴合状态的麻花管，这是最符合工程实际的计算方法
-        const rawAnnulusArea = perimeter * gap;
+        // 空隙面积 = 外圆面积 - 梅花形状面积
+        const rawAnnulusArea = outerCircleArea - plumBlossomArea;
         
         // 考虑螺旋通道的实际有效流通面积
         // 由于是螺旋形，实际流通面积可能略小于横截面积
@@ -2003,15 +2199,17 @@ export async function calculateHeatExchanger(params) {
         const spiralChannelFactor = Math.max(0.9, Math.min(1.0, 1 - 0.01 * (0.1 / twistPitch)));
         annulusArea = rawAnnulusArea * spiralChannelFactor;
         
-        console.log('[环形空间压降计算-麻花管] 流通面积计算（间隙方法）:', {
-          outerInnerDiameter: outerInnerDiameter * 1000, // mm
-          doMax: doMax * 1000, // mm
-          doMin: doMin * 1000, // mm
-          gap: gap * 1000, // mm (平均间隙)
-          perimeter: perimeter * 1000, // mm (外管内径圆周长)
-          rawAnnulusArea: rawAnnulusArea * 1000000, // mm² (周长 × 间隙)
+        console.log('[环形空间压降计算-麻花管] 流通面积计算（考虑安装间隙）:', {
+          innerOuterDiameter: innerOuterDiameter * 1000, // mm (麻花管外径)
+          annulusOuterInnerDiameter: annulusOuterInnerDiameter * 1000, // mm (外管内径，考虑间隙)
+          doMax: annulusOuterInnerDiameter * 1000, // mm (外管内径)
+          doMin: doMin * 1000, // mm (麻花管谷底直径)
+          outerCircleArea: outerCircleArea * 1000000, // mm² (外圆面积)
+          plumBlossomArea: plumBlossomArea * 1000000, // mm² (梅花形状面积)
+          rawAnnulusArea: rawAnnulusArea * 1000000, // mm² (空隙面积 = 外圆面积 - 梅花形状面积)
           spiralChannelFactor,
-          annulusArea: annulusArea * 1000000 // mm²
+          annulusArea: annulusArea * 1000000, // mm² (最终流通面积)
+          installationGap: installationGap * 1000 // mm (单边间隙)
         });
         
         // 确保环形通道面积有效
@@ -2021,8 +2219,8 @@ export async function calculateHeatExchanger(params) {
           annulusPressureDrop = null;
         } else {
           // 计算当量直径和湿周
-          // 外管内壁周长
-          const outerPerimeter = Math.PI * outerInnerDiameter;
+          // 外管内壁周长（使用实际外管内径，考虑安装间隙）
+          const outerPerimeter = Math.PI * annulusOuterInnerDiameter;
           // 麻花管谷底周长（考虑梅花截面）
           const innerValleyPerimeter = lobeSection.perimeter;
           // 当量直径：Dh = 4 * A / (P_outer + P_inner_valley)
@@ -2049,7 +2247,10 @@ export async function calculateHeatExchanger(params) {
               });
             }
           }
-          annulusVelocity = actualColdFlowRate / (effectiveDensity * annulusArea);
+          // 注意：当每流程有多个外管时，这些外管是并联的，流量应该被分配到每个外管
+          // 每个外管中的流量 = 总流量 / 每流程外管数量
+          const annulusFlowRatePerTube = actualColdFlowRate / outerTubeCountPerPass;
+          annulusVelocity = annulusFlowRatePerTube / (effectiveDensity * annulusArea);
           
           // 计算雷诺数（使用有效密度和有效粘度）
           // 对于两相流，需要使用混合粘度
@@ -2093,18 +2294,33 @@ export async function calculateHeatExchanger(params) {
           if (annulusArea > 0 && hydraulicDiameter > 0 && annulusRe > 0 && annulusVelocity < maxVelocity) {
             annulusFrictionFactor = calculateFrictionFactor(annulusRe, 0.0001);
             
-            // 计算压降时需要考虑螺旋路径长度
-            // 实际流动路径长度 = 螺旋长度
-            const spiralPathLength = length * Math.sqrt(1 + Math.pow(Math.PI * doMax / twistPitch, 2));
+            // 注意：环形空间流动是轴向的，应使用直管长度，而不是螺旋路径长度
+            // 螺旋路径长度只适用于管内流动（沿着麻花管螺旋流动）
+            // 环形空间的流体是沿着轴向流动的，不受麻花管螺旋结构的影响
+            // 因此，所有环形空间压降计算都应使用直管长度 length，而不是 spiralPathLength
             
             // 根据相态选择压降计算方法
+            // 修正：对于冷凝过程，如果入口和出口都是单相（过热气体和过冷液体），
+            // 应该使用单相流压降计算，而不是两相流
+            // 因为两相流段只占整个流程的一部分，使用平均干度会导致压降被严重高估
+            const shouldUseTwoPhase = coldIsTwoPhase && 
+                                     coldQualityAvg !== null && 
+                                     coldQualityAvg > 0 && 
+                                     coldQualityAvg < 1 &&
+                                     !(isCondensation && originalColdStateIn === 1 && originalColdStateOut === 0);
+            
             console.log('[环形空间压降计算-麻花管] 压降计算条件检查:', {
               coldIsTwoPhase,
               coldQualityAvg,
-              condition_met: coldIsTwoPhase && coldQualityAvg !== null && coldQualityAvg > 0 && coldQualityAvg < 1
+              isCondensation,
+              originalColdStateIn,
+              originalColdStateOut,
+              shouldUseTwoPhase,
+              condition_met: coldIsTwoPhase && coldQualityAvg !== null && coldQualityAvg > 0 && coldQualityAvg < 1,
+              note: shouldUseTwoPhase ? '使用两相流计算' : '使用单相流计算（冷凝过程过热→过冷）'
             });
             
-            if (coldIsTwoPhase && coldQualityAvg !== null && coldQualityAvg > 0 && coldQualityAvg < 1) {
+            if (shouldUseTwoPhase) {
               // 两相流压降计算
               console.log('[环形空间压降计算-麻花管] 开始两相流压降计算');
               // 需要获取饱和液体和蒸汽物性
@@ -2126,26 +2342,37 @@ export async function calculateHeatExchanger(params) {
                   vaporProps = vaporPropsData.vaporProps;
                 }
                 
-                const massFlux = actualColdFlowRate / annulusArea; // kg/m²/s
+                // 注意：当每流程有多个外管时，这些外管是并联的，流量应该被分配到每个外管
+                const annulusFlowRatePerTube = actualColdFlowRate / outerTubeCountPerPass;
+                const massFlux = annulusFlowRatePerTube / annulusArea; // kg/m²/s
                 console.log('[环形空间压降计算-麻花管] 两相流压降计算参数:', {
                   massFlux,
                   coldQualityAvg,
                   hydraulicDiameter,
-                  spiralPathLength
+                  length, // 使用直管长度
+                  annulusArea: annulusArea * 1000000, // mm²
+                  actualColdFlowRate,
+                  outerTubeCountPerPass,
+                  annulusFlowRatePerTube,
+                  note: '检查质量通量是否合理（已考虑每流程外管数量）'
                 });
+                // 注意：环形空间流动是轴向的，应使用直管长度，而不是螺旋路径长度
                 annulusPressureDrop = calculateTwoPhasePressureDrop(
                   liquidProps,
                   vaporProps,
                   coldQualityAvg,
                   massFlux,
                   hydraulicDiameter,
-                  spiralPathLength,
+                  length, // 使用直管长度，环形空间是轴向流动
                   0.0001
                 );
                 // 考虑多流程
                 annulusPressureDrop.pressureDrop = annulusPressureDrop.pressureDrop * passCount;
                 annulusPressureDrop.pressureDrop_kPa = annulusPressureDrop.pressureDrop / 1000;
                 annulusFrictionFactor = annulusPressureDrop.frictionFactor;
+                // 添加流速信息（两相流使用平均流速）
+                annulusPressureDrop.velocityIn = annulusVelocity;
+                annulusPressureDrop.velocityOut = annulusVelocity;
                 console.log('[环形空间压降计算-麻花管] 两相流压降计算结果:', {
                   annulusPressureDrop,
                   annulusFrictionFactor
@@ -2153,16 +2380,20 @@ export async function calculateHeatExchanger(params) {
               } catch (error) {
                 console.warn(`[环形空间压降计算-麻花管] 两相流压降计算失败，改用单相流计算: ${error.message}`, error);
                 // 如果两相流计算失败，降级为单相流计算
+                // 注意：环形空间流动是轴向的，应使用直管长度
                 annulusPressureDrop = calculateAnnulusPressureDrop(
                   coldProps.density,
                   annulusVelocity,
-                  spiralPathLength,
+                  length, // 使用直管长度，环形空间是轴向流动
                   hydraulicDiameter,
                   annulusRe,
                   0.0001,
                   passCount
                 );
                 annulusFrictionFactor = annulusPressureDrop.frictionFactor;
+                // 添加默认流速信息
+                annulusPressureDrop.velocityIn = annulusVelocity;
+                annulusPressureDrop.velocityOut = annulusVelocity;
                 console.log('[环形空间压降计算-麻花管] 单相流压降计算结果（降级）:', {
                   annulusPressureDrop,
                   annulusFrictionFactor
@@ -2171,20 +2402,107 @@ export async function calculateHeatExchanger(params) {
             } else {
               // 单相流压降计算
               console.log('[环形空间压降计算-麻花管] 使用单相流压降计算');
-              annulusPressureDrop = calculateAnnulusPressureDrop(
-                coldProps.density,
-                annulusVelocity,
-                spiralPathLength, // 使用螺旋路径长度而不是直管长度
-                hydraulicDiameter,
-                annulusRe,
-                0.0001,
-                passCount
-              );
-              annulusFrictionFactor = annulusPressureDrop.frictionFactor;
-              console.log('[环形空间压降计算-麻花管] 单相流压降计算结果:', {
-                annulusPressureDrop,
-                annulusFrictionFactor
-              });
+              
+              // 对于冷凝过程（过热气体→过冷液体），使用分段压降计算
+              if (isCondensation && originalColdStateIn === 1 && originalColdStateOut === 0) {
+                console.log('[环形空间压降计算-麻花管] 冷凝过程：使用分段压降计算（过热段+过冷段）');
+                
+                try {
+                  // 获取进口和出口的物性
+                  const annulusFluid = hotFluidLocation === 'outer' ? hotFluid : coldFluid;
+                  const annulusPressure = hotFluidLocation === 'outer' ? actualHotPressure : actualColdPressure;
+                  const annulusTin = hotFluidLocation === 'outer' ? hotTin : coldTin;
+                  const annulusTout = hotFluidLocation === 'outer' ? hotTout : coldTout;
+                  const annulusFlowRate = hotFluidLocation === 'outer' ? actualHotFlowRate : actualColdFlowRate;
+                  
+                  // 获取饱和温度
+                  const satTempK = await getSaturationTemperature(annulusFluid, annulusPressure * 1000);
+                  
+                  // 获取过热气体物性（进口）
+                  const vaporProps = await getFluidProperties(annulusFluid, annulusTin + 273.15, annulusPressure * 1000);
+                  
+                  // 获取过冷液体物性（出口）
+                  const liquidProps = await getFluidProperties(annulusFluid, annulusTout + 273.15, annulusPressure * 1000);
+                  
+                  // 计算分段压降
+                  // 注意：环形空间流动是轴向的，应使用直管长度，而不是螺旋路径长度
+                  // 螺旋路径长度只适用于管内流动（沿着麻花管螺旋流动）
+                  // 注意：当每流程有多个外管时，这些外管是并联的，流量应该被分配到每个外管
+                  const annulusFlowRatePerTube = annulusFlowRate / outerTubeCountPerPass;
+                  const condensationDrop = calculateCondensationPressureDrop(
+                    vaporProps,
+                    liquidProps,
+                    annulusFlowRatePerTube, // 使用每个外管中的流量
+                    annulusArea,
+                    hydraulicDiameter,
+                    length, // 使用直管长度，环形空间是轴向流动
+                    satTempK,
+                    annulusTin + 273.15,
+                    annulusTout + 273.15,
+                    passCount,
+                    0.0001
+                  );
+                  
+                  annulusPressureDrop = {
+                    pressureDrop: condensationDrop.pressureDrop,
+                    pressureDrop_kPa: condensationDrop.pressureDrop_kPa,
+                    superheatedDrop: condensationDrop.superheatedDrop,
+                    subcooledDrop: condensationDrop.subcooledDrop,
+                    velocityIn: condensationDrop.velocityIn,
+                    velocityOut: condensationDrop.velocityOut
+                  };
+                  annulusFrictionFactor = condensationDrop.frictionFactor;
+                  
+                  console.log('[环形空间压降计算-麻花管] 冷凝过程分段压降计算结果:', {
+                    totalPressureDrop_kPa: condensationDrop.pressureDrop_kPa,
+                    superheatedDrop_kPa: condensationDrop.superheatedDrop / 1000,
+                    subcooledDrop_kPa: condensationDrop.subcooledDrop / 1000,
+                    velocityIn: condensationDrop.velocityIn,
+                    velocityOut: condensationDrop.velocityOut,
+                    superheatedLength: condensationDrop.superheatedLength,
+                    subcooledLength: condensationDrop.subcooledLength,
+                    frictionFactor: condensationDrop.frictionFactor
+                  });
+                } catch (error) {
+                  console.warn('[环形空间压降计算-麻花管] 分段压降计算失败，降级为单相流计算:', error);
+                  // 降级为单相流计算（使用平均物性）
+                  // 注意：环形空间流动是轴向的，应使用直管长度
+                  annulusPressureDrop = calculateAnnulusPressureDrop(
+                    coldProps.density,
+                    annulusVelocity,
+                    length, // 使用直管长度，环形空间是轴向流动
+                    hydraulicDiameter,
+                    annulusRe,
+                    0.0001,
+                    passCount
+                  );
+                  annulusFrictionFactor = annulusPressureDrop.frictionFactor;
+                  // 添加默认流速信息
+                  annulusPressureDrop.velocityIn = annulusVelocity;
+                  annulusPressureDrop.velocityOut = annulusVelocity;
+                }
+              } else {
+                // 普通单相流压降计算
+                // 注意：环形空间流动是轴向的，应使用直管长度，而不是螺旋路径长度
+                // 螺旋路径长度只适用于管内流动（沿着麻花管螺旋流动）
+                annulusPressureDrop = calculateAnnulusPressureDrop(
+                  coldProps.density,
+                  annulusVelocity,
+                  length, // 使用直管长度，环形空间是轴向流动
+                  hydraulicDiameter,
+                  annulusRe,
+                  0.0001,
+                  passCount
+                );
+                annulusFrictionFactor = annulusPressureDrop.frictionFactor;
+                // 添加流速信息（单相流时进口和出口流速相同）
+                annulusPressureDrop.velocityIn = annulusVelocity;
+                annulusPressureDrop.velocityOut = annulusVelocity;
+                console.log('[环形空间压降计算-麻花管] 单相流压降计算结果:', {
+                  annulusPressureDrop,
+                  annulusFrictionFactor
+                });
+              }
             }
           } else {
             // 如果环形空间太小或流速异常，设置压降为null
@@ -2204,16 +2522,21 @@ export async function calculateHeatExchanger(params) {
         }
       } else {
         // 直管模式：使用标准环形空间计算
-        const outerInnerRadius = outerInnerDiameter / 2;
+        // 使用有效外管内径（考虑安装间隙）
+        const outerInnerRadius = annulusOuterInnerDiameter / 2;
         const innerOuterRadius = actualInnerOuterDiameter / 2;
         const totalInnerCrossSection = innerTubeCount * Math.PI * Math.pow(innerOuterRadius, 2);
         annulusArea = Math.PI * Math.pow(outerInnerRadius, 2) - totalInnerCrossSection;
         
-        const outerInnerPerimeter = Math.PI * outerInnerDiameter;
+        const outerInnerPerimeter = Math.PI * annulusOuterInnerDiameter;
         const innerOuterPerimeter = innerTubeCount * Math.PI * actualInnerOuterDiameter;
         hydraulicDiameter = (4 * annulusArea) / (outerInnerPerimeter + innerOuterPerimeter);
         
-        annulusVelocity = actualColdFlowRate / (coldProps.density * annulusArea);
+        // 注意：当每流程有多个外管时，这些外管是并联的，流量应该被分配到每个外管
+        // 每个外管中的流量 = 总流量 / 每流程外管数量
+        const annulusFlowRatePerTube = actualColdFlowRate / outerTubeCountPerPass;
+        annulusVelocity = annulusFlowRatePerTube / (coldProps.density * annulusArea);
+        
         annulusRe = calculateReynoldsNumber(
           coldProps.density,
           annulusVelocity,
@@ -2224,9 +2547,29 @@ export async function calculateHeatExchanger(params) {
         // 确保面积和当量直径有效
         if (annulusArea > 0 && hydraulicDiameter > 0 && annulusRe > 0) {
           // 根据相态选择压降计算方法
-          if (coldIsTwoPhase && coldQualityAvg !== null && coldQualityAvg > 0 && coldQualityAvg < 1 && coldProps.liquidProps && coldProps.vaporProps) {
+          // 修正：对于冷凝过程，如果入口和出口都是单相（过热气体和过冷液体），
+          // 应该使用单相流压降计算，而不是两相流
+          const shouldUseTwoPhase = coldIsTwoPhase && 
+                                   coldQualityAvg !== null && 
+                                   coldQualityAvg > 0 && 
+                                   coldQualityAvg < 1 && 
+                                   coldProps.liquidProps && 
+                                   coldProps.vaporProps &&
+                                   !(isCondensation && originalColdStateIn === 1 && originalColdStateOut === 0);
+          
+          if (shouldUseTwoPhase) {
             // 两相流压降计算
-            const massFlux = actualColdFlowRate / annulusArea; // kg/m²/s
+            // 注意：当每流程有多个外管时，这些外管是并联的，流量应该被分配到每个外管
+            const annulusFlowRatePerTube = actualColdFlowRate / outerTubeCountPerPass;
+            const massFlux = annulusFlowRatePerTube / annulusArea; // kg/m²/s
+            console.log('[环形空间压降计算-直管] 两相流压降计算参数:', {
+              massFlux,
+              coldQualityAvg,
+              hydraulicDiameter,
+              length,
+              annulusArea: annulusArea * 1000000, // mm²
+              actualColdFlowRate
+            });
             annulusPressureDrop = calculateTwoPhasePressureDrop(
               coldProps.liquidProps,
               coldProps.vaporProps,
@@ -2240,18 +2583,117 @@ export async function calculateHeatExchanger(params) {
             annulusPressureDrop.pressureDrop = annulusPressureDrop.pressureDrop * passCount;
             annulusPressureDrop.pressureDrop_kPa = annulusPressureDrop.pressureDrop / 1000;
             annulusFrictionFactor = annulusPressureDrop.frictionFactor;
+            // 添加流速信息（两相流使用平均流速）
+            annulusPressureDrop.velocityIn = annulusVelocity;
+            annulusPressureDrop.velocityOut = annulusVelocity;
+            console.log('[环形空间压降计算-直管] 两相流压降计算结果:', {
+              annulusPressureDrop,
+              annulusFrictionFactor
+            });
           } else {
-            // 单相流压降计算
-            annulusFrictionFactor = calculateFrictionFactor(annulusRe, 0.0001);
-            annulusPressureDrop = calculateAnnulusPressureDrop(
-              coldProps.density,
-              annulusVelocity,
-              length,
-              hydraulicDiameter,
-              annulusRe,
-              0.0001,
-              passCount
-            );
+            // 单相流压降计算（包括冷凝过程的过热段和过冷段）
+            console.log('[环形空间压降计算-直管] 使用单相流压降计算', {
+              reason: isCondensation && originalColdStateIn === 1 && originalColdStateOut === 0 
+                ? '冷凝过程（过热→过冷）' 
+                : '单相流或缺少两相流物性'
+            });
+            
+            // 对于冷凝过程（过热气体→过冷液体），使用分段压降计算
+            if (isCondensation && originalColdStateIn === 1 && originalColdStateOut === 0) {
+              console.log('[环形空间压降计算-直管] 冷凝过程：使用分段压降计算（过热段+过冷段）');
+              
+              try {
+                // 获取进口和出口的物性
+                const annulusFluid = hotFluidLocation === 'outer' ? hotFluid : coldFluid;
+                const annulusPressure = hotFluidLocation === 'outer' ? actualHotPressure : actualColdPressure;
+                const annulusTin = hotFluidLocation === 'outer' ? hotTin : coldTin;
+                const annulusTout = hotFluidLocation === 'outer' ? hotTout : coldTout;
+                const annulusFlowRate = hotFluidLocation === 'outer' ? actualHotFlowRate : actualColdFlowRate;
+                
+                // 获取饱和温度
+                const satTempK = await getSaturationTemperature(annulusFluid, annulusPressure * 1000);
+                
+                // 获取过热气体物性（进口）
+                const vaporProps = await getFluidProperties(annulusFluid, annulusTin + 273.15, annulusPressure * 1000);
+                
+                // 获取过冷液体物性（出口）
+                const liquidProps = await getFluidProperties(annulusFluid, annulusTout + 273.15, annulusPressure * 1000);
+                
+                // 计算分段压降
+                // 注意：环形空间流动是轴向的，应使用直管长度
+                // 注意：当每流程有多个外管时，这些外管是并联的，流量应该被分配到每个外管
+                const annulusFlowRatePerTube = annulusFlowRate / outerTubeCountPerPass;
+                const condensationDrop = calculateCondensationPressureDrop(
+                  vaporProps,
+                  liquidProps,
+                  annulusFlowRatePerTube, // 使用每个外管中的流量
+                  annulusArea,
+                  hydraulicDiameter,
+                  length, // 使用直管长度，环形空间是轴向流动
+                  satTempK,
+                  annulusTin + 273.15,
+                  annulusTout + 273.15,
+                  passCount,
+                  0.0001
+                );
+                
+                annulusPressureDrop = {
+                  pressureDrop: condensationDrop.pressureDrop,
+                  pressureDrop_kPa: condensationDrop.pressureDrop_kPa,
+                  superheatedDrop: condensationDrop.superheatedDrop,
+                  subcooledDrop: condensationDrop.subcooledDrop,
+                  velocityIn: condensationDrop.velocityIn,
+                  velocityOut: condensationDrop.velocityOut
+                };
+                annulusFrictionFactor = condensationDrop.frictionFactor;
+                
+                console.log('[环形空间压降计算-直管] 冷凝过程分段压降计算结果:', {
+                  totalPressureDrop_kPa: condensationDrop.pressureDrop_kPa,
+                  superheatedDrop_kPa: condensationDrop.superheatedDrop / 1000,
+                  subcooledDrop_kPa: condensationDrop.subcooledDrop / 1000,
+                  velocityIn: condensationDrop.velocityIn,
+                  velocityOut: condensationDrop.velocityOut,
+                  superheatedLength: condensationDrop.superheatedLength,
+                  subcooledLength: condensationDrop.subcooledLength,
+                  frictionFactor: condensationDrop.frictionFactor
+                });
+              } catch (error) {
+                console.warn('[环形空间压降计算-直管] 分段压降计算失败，降级为单相流计算:', error);
+                // 降级为单相流计算（使用平均物性）
+                annulusFrictionFactor = calculateFrictionFactor(annulusRe, 0.0001);
+                annulusPressureDrop = calculateAnnulusPressureDrop(
+                  coldProps.density,
+                  annulusVelocity,
+                  length,
+                  hydraulicDiameter,
+                  annulusRe,
+                  0.0001,
+                  passCount
+                );
+                // 添加默认流速信息
+                annulusPressureDrop.velocityIn = annulusVelocity;
+                annulusPressureDrop.velocityOut = annulusVelocity;
+              }
+            } else {
+              // 普通单相流压降计算
+              annulusFrictionFactor = calculateFrictionFactor(annulusRe, 0.0001);
+              annulusPressureDrop = calculateAnnulusPressureDrop(
+                coldProps.density,
+                annulusVelocity,
+                length,
+                hydraulicDiameter,
+                annulusRe,
+                0.0001,
+                passCount
+              );
+              // 添加流速信息（单相流时进口和出口流速相同）
+              annulusPressureDrop.velocityIn = annulusVelocity;
+              annulusPressureDrop.velocityOut = annulusVelocity;
+              console.log('[环形空间压降计算-直管] 单相流压降计算结果:', {
+                annulusPressureDrop,
+                annulusFrictionFactor
+              });
+            }
           }
         } else {
           // 如果环形空间太小或无效，设置压降为null
@@ -2413,6 +2855,14 @@ export async function calculateHeatExchanger(params) {
       : (typeof annulusPressureDrop === 'number' ? annulusPressureDrop : null);
     const resultAnnulusFrictionFactor = (annulusFrictionFactor !== null && annulusFrictionFactor !== undefined) ? annulusFrictionFactor : null;
     
+    // 提取环形空间的进口和出口流速
+    const annulusVelocityIn = (annulusPressureDrop && typeof annulusPressureDrop === 'object' && 'velocityIn' in annulusPressureDrop)
+      ? annulusPressureDrop.velocityIn
+      : null;
+    const annulusVelocityOut = (annulusPressureDrop && typeof annulusPressureDrop === 'object' && 'velocityOut' in annulusPressureDrop)
+      ? annulusPressureDrop.velocityOut
+      : null;
+    
     console.log('[返回值准备] 压降和摩擦系数:', {
       innerPressureDrop_object: innerPressureDrop,
       resultInnerPressureDrop,
@@ -2424,7 +2874,7 @@ export async function calculateHeatExchanger(params) {
       resultAnnulusFrictionFactor
     });
 
-    return {
+    const result = {
       heatTransferRate: heatTransferRate_kW, // 转换为 kW
       temperatureDistribution: temperatureDistribution, // 温度分布数据
       lmtd: lmtd,
@@ -2458,8 +2908,12 @@ export async function calculateHeatExchanger(params) {
       innerFrictionFactor: resultInnerFrictionFactor,                    // 管内摩擦系数
       annulusPressureDrop: resultAnnulusPressureDrop,  // 环形空间压降 (kPa)
       annulusFrictionFactor: resultAnnulusFrictionFactor,                // 环形空间摩擦系数
+      annulusVelocityIn: annulusVelocityIn,            // 环形空间进口流速 (m/s)
+      annulusVelocityOut: annulusVelocityOut,          // 环形空间出口流速 (m/s)
       success: true
     };
+    
+    return result;
   } catch (error) {
     console.error('换热器计算失败:', error);
     return {
