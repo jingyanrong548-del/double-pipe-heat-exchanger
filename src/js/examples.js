@@ -166,10 +166,10 @@ export const currentDebugExample = {
   innerTubeCount: 1,  // 1根内管
   innerTubeType: 'twisted',  // 麻花管
   isTwisted: true,
-  twistPitch: 6.5,  // 6.5mm 螺旋节距（注意：这里单位是mm）
+  twistPitch: 0.0065,  // 6.5mm 螺旋节距（单位：m）
   twistLobeCount: 6,  // 6头
-  twistToothHeight: 3.0,  // 3mm 齿高（注意：这里单位是mm）
-  twistWallThickness: 1.0,  // 1mm 麻花管壁厚（注意：这里单位是mm）
+  twistToothHeight: 0.003,  // 3mm 齿高（单位：m）
+  twistWallThickness: 0.001,  // 1mm 麻花管壁厚（单位：m）
   passCount: 1,  // 1个流程
   outerTubeCountPerPass: 1,  // 每流程1根外管
   
