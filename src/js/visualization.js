@@ -774,10 +774,12 @@ export function drawFrontView(canvas, params) {
  * @param {Object} params - 参数对象
  */
 export function updateVisualization(params) {
+  const frontImage = document.getElementById('front-view-image');
   const frontCanvas = document.getElementById('front-view-canvas');
+  
   if (!frontCanvas) return;
-
-  // 确保Canvas有正确的显示尺寸（drawFrontView会处理高DPI）
+  
+  // 确保Canvas有正确的显示尺寸
   const container = frontCanvas.parentElement;
   if (container) {
     const containerWidth = container.clientWidth;
@@ -788,8 +790,24 @@ export function updateVisualization(params) {
     frontCanvas.style.width = displayWidth + 'px';
     frontCanvas.style.height = displayHeight + 'px';
   }
-
-  // 只显示前视图（截面图）- drawFrontView会处理高DPI设置
+  
+  // 检查图片是否已加载成功
+  if (frontImage) {
+    if (frontImage.complete && frontImage.naturalHeight !== 0) {
+      // 图片加载成功，显示图片，隐藏Canvas
+      frontImage.style.display = 'block';
+      frontCanvas.style.display = 'none';
+      return;
+    }
+  }
+  
+  // 图片不存在或加载失败，使用Canvas绘制
+  if (frontImage) {
+    frontImage.style.display = 'none';
+  }
+  frontCanvas.style.display = 'block';
+  
+  // 使用Canvas绘制截面图
   drawFrontView(frontCanvas, params);
 }
 
