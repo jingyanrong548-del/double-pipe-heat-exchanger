@@ -1,12 +1,15 @@
 {
   "name": "heat-exchanger-calculator",
-  "version": "1.0.0",
+  "version": "1.0.0-20260103.19",
   "description": "套管换热器热力计算 Web 应用",
   "type": "module",
+  "author": "荆炎荣",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "version:update": "node scripts/version-update.js",
+    "precommit": "npm run version:update && git add package.json VERSION"
   },
   "devDependencies": {
     "autoprefixer": "^10.4.20",
@@ -14,6 +17,12 @@
     "tailwindcss": "^3.4.13",
     "vite": "^5.4.11"
   },
-  "dependencies": {}
+  "dependencies": {},
+  "buildInfo": {
+    "commitHash": "fe3e4c9",
+    "commitDate": "2025-12-31 18:10:00 +0800",
+    "branch": "main",
+    "buildDate": "2026-01-03T03:30:09.117Z",
+    "commitCount": 19
+  }
 }
-

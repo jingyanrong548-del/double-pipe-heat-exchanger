@@ -3,7 +3,7 @@
  * 处理表单验证、结果显示等界面交互
  */
 
-import { calculateHeatExchanger, calculateLobeCrossSection } from './heat_exchanger.js';
+import { calculateHeatExchanger, calculateLobeCrossSection, calculateAnnulusEquivalentDiameter, calculateAnnulusEquivalentDiameterWithLobe } from './heat_exchanger.js';
 import { updateVisualization, drawTemperatureDistribution } from './visualization.js';
 import { getMaterialInfo } from './materials.js';
 import { getTwistedTubePreset } from './twisted_tube_presets.js';
@@ -625,18 +625,34 @@ export function showResults(results) {
           parentElement: geometryInfoEl.parentElement?.id || 'N/A'
         });
         
+        // 获取计算结果中的几何参数（优先使用三段计算结果，否则使用常规计算结果）
+        let innerEqDia = null, outerEqDia = null;
+        let innerHydDia = null, outerHydDia = null;
+        let outerAreaEqDia = null; // 环隙面积当量直径
+        if (results.threeZoneResult && results.threeZoneResult.geometry) {
+          // 使用三段计算结果的几何参数
+          innerEqDia = results.threeZoneResult.geometry.innerEquivalentDiameter;
+          outerEqDia = results.threeZoneResult.geometry.outerEquivalentDiameter;
+          innerHydDia = results.threeZoneResult.geometry.innerHydraulicDiameter;
+          outerHydDia = results.threeZoneResult.geometry.outerHydraulicDiameter;
+          outerAreaEqDia = results.threeZoneResult.geometry.outerAreaEquivalentDiameter;
+        } else if (results.geometry) {
+          // 使用常规计算结果的几何参数
+          innerEqDia = results.geometry.innerEquivalentDiameter;
+          outerEqDia = results.geometry.outerEquivalentDiameter;
+          innerHydDia = results.geometry.innerHydraulicDiameter;
+          outerHydDia = results.geometry.outerHydraulicDiameter;
+          outerAreaEqDia = results.geometry.outerAreaEquivalentDiameter;
+        }
+        
         // 先设置内容
         geometryInfoEl.innerHTML = `
           <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
-            <h4 class="text-sm font-semibold text-blue-900 mb-3">麻花管几何属性</h4>
-            <div class="grid grid-cols-2 gap-3 text-xs">
+            <h4 class="text-sm font-semibold text-blue-900 mb-3">几何参数</h4>
+            <div class="grid grid-cols-2 gap-3 text-xs mb-3">
               <div>
                 <span class="text-gray-600">截面面积:</span>
                 <span class="font-bold text-blue-700 ml-1">${(geometryProps.area * 1e6).toFixed(2)} mm²</span>
-              </div>
-              <div>
-                <span class="text-gray-600">当量直径:</span>
-                <span class="font-bold text-blue-700 ml-1">${(geometryProps.equivalentDiameter * 1000).toFixed(2)} mm</span>
               </div>
               <div>
                 <span class="text-gray-600">截面周长:</span>
@@ -647,6 +663,38 @@ export function showResults(results) {
                 <span class="font-bold text-blue-700 ml-1">${tubeGeometry.helicalLengthFactor.toFixed(3)}</span>
               </div>
             </div>
+            ${innerEqDia !== null && innerHydDia !== null ? `
+            <div class="mt-3 pt-3 border-t border-blue-200">
+              <h5 class="text-xs font-semibold text-blue-800 mb-2">内管内当量直径与水力直径</h5>
+              <div class="grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <span class="text-gray-600">当量直径:</span>
+                  <span class="font-bold text-green-700 ml-1">${(innerEqDia * 1000).toFixed(2)} mm</span>
+                </div>
+                <div>
+                  <span class="text-gray-600">水力直径:</span>
+                  <span class="font-bold text-purple-700 ml-1">${(innerHydDia * 1000).toFixed(2)} mm</span>
+                </div>
+              </div>
+            </div>
+            ` : ''}
+            ${outerAreaEqDia !== null && outerHydDia !== null ? `
+            <div class="mt-3 pt-3 border-t border-blue-200">
+              <h5 class="text-xs font-semibold text-blue-800 mb-2">内管外当量直径与水力直径</h5>
+              <div class="grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <span class="text-gray-600">面积当量直径:</span>
+                  <span class="font-bold text-orange-700 ml-1">${(outerAreaEqDia * 1000).toFixed(2)} mm</span>
+                  <span class="text-gray-500 text-xs ml-1">(用于流速/流量)</span>
+                </div>
+                <div>
+                  <span class="text-gray-600">水力直径:</span>
+                  <span class="font-bold text-purple-700 ml-1">${(outerHydDia * 1000).toFixed(2)} mm</span>
+                  <span class="text-gray-500 text-xs ml-1">(用于传热/压降)</span>
+                </div>
+              </div>
+            </div>
+            ` : ''}
           </div>
         `;
         
@@ -1172,46 +1220,10 @@ export function initializeUI() {
           if (twistToothHeightInput) twistToothHeightInput.dispatchEvent(new Event('change'));
           if (twistLobeCountSelect) twistLobeCountSelect.dispatchEvent(new Event('change'));
           
-          // 更新麻花管几何参数显示
-          updateTwistedGeometryDisplay();
         }
       }
     });
   }
-  
-  // 更新麻花管几何参数显示
-  const updateTwistedGeometryDisplay = () => {
-    const formData = getFormData();
-    if (formData.isTwisted) {
-      const twistOuterDiameter = formData.outerInnerDiameter; // 麻花管外径 = 外管内径
-      const twistWallThickness = formData.twistWallThickness || formData.innerWallThickness;
-      // 使用齿高计算doMin，而不是用壁厚
-      const doMax = twistOuterDiameter;
-      const doMin = doMax - 2 * (formData.twistToothHeight || 0.003);
-      
-      // 更新显示
-      const calcOuterDiameterEl = document.getElementById('calc-twist-outer-diameter');
-      const calcInnerDiameterEl = document.getElementById('calc-twist-inner-diameter');
-      if (calcOuterDiameterEl) calcOuterDiameterEl.textContent = (doMax * 1000).toFixed(2);
-      if (calcInnerDiameterEl) calcInnerDiameterEl.textContent = (doMin * 1000).toFixed(2);
-      
-      // 计算当量直径和流通面积
-      try {
-        // 使用齿高计算doMin
-        const doMax = twistOuterDiameter;
-        const doMin = doMax - 2 * (formData.twistToothHeight || 0.003);
-        const lobeSection = calculateLobeCrossSection(doMax, doMin, formData.twistLobeCount || 6);
-        
-        const calcEquivalentDiameterEl = document.getElementById('calc-twist-equivalent-diameter');
-        const calcFlowAreaEl = document.getElementById('calc-twist-flow-area');
-        if (calcEquivalentDiameterEl) calcEquivalentDiameterEl.textContent = (lobeSection.equivalentDiameter * 1000).toFixed(2);
-        if (calcFlowAreaEl) calcFlowAreaEl.textContent = lobeSection.area.toFixed(6);
-      } catch (e) {
-        // 如果计算失败，暂时不显示
-        console.warn('无法更新麻花管几何参数:', e);
-      }
-    }
-  };
   
   if (innerTubeTypeSelect) {
     const updateTubeTypeParamsVisibility = () => {
@@ -1236,7 +1248,6 @@ export function initializeUI() {
             innerTubeCountSelect.disabled = true;
             innerTubeCountSelect.classList.add('opacity-50', 'cursor-not-allowed');
           }
-          updateTwistedGeometryDisplay();
         } else {
           twistedParamsDiv.classList.add('hidden');
           // 恢复内管数量选择
@@ -1276,7 +1287,6 @@ export function initializeUI() {
             twistedTubePresetSelect.value = '';
           }
           if (innerTubeTypeSelect.value === 'twisted') {
-            updateTwistedGeometryDisplay();
           }
         });
       }

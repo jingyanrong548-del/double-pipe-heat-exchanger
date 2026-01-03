@@ -1,0 +1,34 @@
+name: Auto Version Update
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  update-version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # 获取完整历史以计算提交次数
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      
+      - name: Update version
+        run: npm run version:update
+      
+      - name: Commit version changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add package.json VERSION
+          git diff --staged --quiet || git commit -m "chore: auto-update version [skip ci]"
+          git push || echo "No changes to commit"
+

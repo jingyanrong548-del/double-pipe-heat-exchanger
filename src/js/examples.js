@@ -155,7 +155,10 @@ export const currentDebugExample = {
   heatLoad: 41.8,  // kW
   
   // 换热器参数
-  innerOuterDiameter: 0.034,  // 34mm 麻花管外径（等于外管内径）
+  // 外管名义内径 = 38 - 2×2 = 34mm
+  // 麻花管外径 = 外管名义内径 = 34mm
+  // 外管内径 = 外管名义内径 + 1mm安装间隙 = 35mm
+  innerOuterDiameter: 0.034,  // 34mm 麻花管外径（等于外管名义内径）
   innerWallThickness: 0.001,  // 1mm 麻花管壁厚
   outerOuterDiameter: 0.038,  // 38mm 外管外径
   outerWallThickness: 0.002,  // 2mm 外管壁厚

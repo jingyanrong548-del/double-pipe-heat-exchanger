@@ -105,6 +105,27 @@ export function calculateConvectiveHeatTransferCoefficient(nu, thermalConductivi
  * @param {number} lobeCount - 头数（瓣数，3-6）
  * @returns {Object} {area: 面积 (m²), perimeter: 湿周 (m), equivalentDiameter: 当量直径 (m), toothHeight: 齿高h (m)}
  */
+/**
+ * 计算梅花截面的几何参数（用于麻花管环隙面积计算）
+ * 
+ * 几何定义：
+ * - doMax：峰顶直径（麻花管外径，等于外管名义内径）
+ * - doMin：谷底直径（峰顶直径 - 2×齿高）
+ * - lobeCount：头数（瓣数，通常3-6）
+ * 
+ * 梅花截面形状：
+ * - 从峰顶（doMax）到谷底（doMin）形成的多瓣梅花形状
+ * - 每个瓣从谷底延伸到峰顶，形成星形截面
+ * 
+ * @param {number} doMax - 峰顶直径 (m)（麻花管外径）
+ * @param {number} doMin - 谷底直径 (m)（峰顶直径 - 2×齿高）
+ * @param {number} lobeCount - 头数（瓣数，通常3-6）
+ * @returns {Object} 梅花截面几何参数
+ *   - area: 梅花截面面积 (m²)（从峰到谷的截面面积）
+ *   - perimeter: 梅花截面周长 (m)（湿周）
+ *   - equivalentDiameter: 当量直径 (m)（Dh = 4A/P）
+ *   - toothHeight: 齿高 (m)（单边高度，h = (doMax - doMin)/2）
+ */
 export function calculateLobeCrossSection(doMax, doMin, lobeCount) {
   const rMax = doMax / 2; // 峰顶半径
   const rMin = doMin / 2; // 谷底半径
@@ -143,6 +164,78 @@ export function calculateLobeCrossSection(doMax, doMin, lobeCount) {
     perimeter: lobePerimeter,
     equivalentDiameter: equivalentDiameter,
     toothHeight: h
+  };
+}
+
+/**
+ * 计算环隙几何参数（统一函数，用于传热、压降和几何参数计算）
+ * 
+ * 几何定义说明：
+ * - 外管内径：外管名义内径 + 1mm安装间隙（用于计算外圆面积）
+ * - 麻花管外径：等于外管名义内径（doMax，峰顶直径）
+ * - 麻花管谷底直径：麻花管外径 - 2×齿高（doMin，谷底直径）
+ * - 梅花形状面积：从麻花管外径（峰）到谷底的梅花截面面积
+ * - 环隙流通面积 = 外圆面积 - 梅花形状面积
+ * 
+ * @param {number} annulusOuterInnerDiameter - 外管内径 (m)（外管名义内径 + 1mm安装间隙）
+ * @param {number} innerOuterDiameter - 麻花管外径 (m)（等于外管名义内径，即doMax）
+ * @param {number} twistToothHeight - 齿高 (m)（从峰到谷的单边高度）
+ * @param {number} twistLobeCount - 头数（瓣数）
+ * @param {number} twistPitch - 螺旋节距 (m)
+ * @returns {Object} 环隙几何参数
+ *   - annulusArea: 环隙流通面积 (m²)（考虑螺旋通道修正后的有效流通面积）
+ *   - hydraulicDiameter: 环隙水力直径 (m)
+ *   - areaEquivalentDiameter: 环隙面积当量直径 (m)
+ *   - rawAnnulusArea: 原始环隙面积（未修正）(m²)（外圆面积 - 梅花形状面积）
+ *   - spiralChannelFactor: 螺旋通道修正系数
+ */
+export function calculateAnnulusGeometry(
+  annulusOuterInnerDiameter,
+  innerOuterDiameter,
+  twistToothHeight,
+  twistLobeCount,
+  twistPitch
+) {
+  // 计算麻花管梅花截面参数
+  // doMax: 麻花管外径（峰顶直径，等于外管名义内径）
+  // doMin: 麻花管谷底直径（峰顶直径 - 2×齿高）
+  const outerDoMax = innerOuterDiameter; // 麻花管外径（等于外管名义内径）
+  const outerDoMin = innerOuterDiameter - 2 * twistToothHeight; // 麻花管谷底直径
+  const outerLobeSection = calculateLobeCrossSection(outerDoMax, outerDoMin, twistLobeCount);
+  
+  // 外圆面积（外管内径 = 外管名义内径 + 1mm安装间隙）
+  // 这是外管内壁形成的圆形面积
+  const outerInnerRadius = annulusOuterInnerDiameter / 2;
+  const outerCircleArea = Math.PI * Math.pow(outerInnerRadius, 2);
+  
+  // 梅花形状面积：从麻花管外径（峰）到谷底的梅花截面面积
+  // 这是麻花管外轮廓形成的梅花形状面积
+  const plumBlossomArea = outerLobeSection.area;
+  
+  // 原始环隙流通面积 = 外圆面积 - 梅花形状面积
+  // 这是外管内壁与麻花管外轮廓之间的空隙面积
+  const rawAnnulusArea = outerCircleArea - plumBlossomArea;
+  
+  // 考虑螺旋通道的实际有效流通面积
+  const spiralChannelFactor = Math.max(0.9, Math.min(1.0, 1 - 0.01 * (0.1 / twistPitch)));
+  const annulusArea = rawAnnulusArea * spiralChannelFactor;
+  
+  // 计算管外水力直径：Dh = 4 * A / (P_outer + P_inner_valley)
+  const outerPerimeter = Math.PI * annulusOuterInnerDiameter; // 外管内壁周长
+  const innerValleyPerimeter = outerLobeSection.perimeter; // 麻花管谷底周长
+  const hydraulicDiameter = (4 * annulusArea) / (outerPerimeter + innerValleyPerimeter);
+  
+  // 计算环隙面积当量直径（基于面积的当量直径）
+  // 面积当量直径 = 2 × √(A/π) = √(4A/π)
+  const areaEquivalentDiameter = Math.sqrt(4 * annulusArea / Math.PI);
+  
+  return {
+    annulusArea,
+    hydraulicDiameter,
+    areaEquivalentDiameter,
+    rawAnnulusArea,
+    spiralChannelFactor,
+    outerLobeSection // 返回梅花截面信息，供需要时使用
   };
 }
 
@@ -337,24 +430,62 @@ export function calculateTwistedTubeEnhancementFactor(twistPitch, innerDiameter,
  * @param {number} lobeCount - 头数（瓣数）
  * @returns {number} 实际传热面积 (m²)
  */
+/**
+ * 计算麻花管的传热面积（修正版）
+ * 
+ * 物理背景：
+ * 麻花管（Twisted Tube）是通过圆管扭曲变形制成的，并非外加翅片。
+ * 相比同直径光管，其表面积增加非常有限，通常在5%-20%之间（系数1.05-1.20）。
+ * 
+ * 修正说明：
+ * 原代码错误地使用了螺旋路径长度公式来计算表面积，导致面积被严重高估（系数可达12+）。
+ * 正确的理解是：麻花管是圆管扭曲形成的，扭曲带来的表面积增加非常有限。
+ * 
+ * 增强来源：
+ * 1. 扭曲增强：由于扭曲，截面略有变形，表面积轻微增加（1-5%）
+ * 2. 瓣形增强：梅花截面（多瓣形）带来的接触面积增加（1-10%）
+ * 
+ * @param {number} outerDiameter - 麻花管外径 (m)
+ * @param {number} innerDiameter - 麻花管内径 (m)
+ * @param {number} length - 管长 (m)
+ * @param {number} twistPitch - 螺旋节距 (m)，节距越小扭曲越严重
+ * @param {number} lobeCount - 头数（瓣数），默认4，范围通常3-6
+ * @returns {number} 单根麻花管的传热面积 (m²)
+ */
 export function calculateTwistedTubeArea(outerDiameter, innerDiameter, length, twistPitch, lobeCount = 4) {
-  const outerRadius = outerDiameter / 2;
-  const innerRadius = innerDiameter / 2;
-  
-  // 基础面积（圆形截面）
+  // 基础面积（圆管面积）
+  // 这是相同外径光管的传热面积
   const baseAreaPerTube = Math.PI * outerDiameter * length;
   
-  // 螺旋增加的面积（考虑螺旋路径）
-  const numTwists = length / twistPitch;
-  const spiralLength = length * Math.sqrt(1 + Math.pow(Math.PI * outerDiameter / twistPitch, 2));
-  const spiralAreaPerTube = Math.PI * outerDiameter * spiralLength;
+  // 麻花管的表面积增强系数
+  // 基于工程经验和物理实际，麻花管相对于光管的面积增加通常在5-20%之间
+  // 增强主要来自：
+  // 1. 扭曲带来的轻微表面积增加（1-5%）
+  // 2. 梅花截面带来的接触面积增加（1-10%）
+  // 3. 头数越多，增强越明显，但增加有限
   
-  // 瓣形增加的面积（梅花截面带来的接触面积增加）
-  const lobeAreaEnhancement = 1 + 0.15 * (lobeCount - 3); // 头数越多，接触面积越大
+  // 计算扭曲程度：节距/外径比
+  // 节距越小（aspectRatio越小），扭曲越严重，表面积增加越明显
+  const aspectRatio = twistPitch / outerDiameter; // 无量纲
   
-  // 实际面积 = 基础面积 × 螺旋因子 × 瓣形因子
-  const spiralFactor = 1 + (spiralAreaPerTube - baseAreaPerTube) / baseAreaPerTube * 0.5; // 考虑实际效果
-  const areaPerTube = baseAreaPerTube * spiralFactor * lobeAreaEnhancement;
+  // 扭曲增强：节距越小，扭曲越严重，表面积增加越明显
+  // 但增强非常有限，最大不超过5%
+  // 使用保守的增强模型：增强系数 = 1 + min(0.05, 0.01/aspectRatio)
+  const twistEnhancement = 1 + Math.min(0.05, 0.01 / Math.max(aspectRatio, 0.1));
+  
+  // 瓣形增强：头数越多，增强越明显
+  // 但增强非常有限，最大不超过15%
+  // 修正：从原来的 0.15 * (lobeCount - 3) 改为更保守的 0.02 * (lobeCount - 3)
+  // 对于6头管：1 + 0.02 * 3 = 1.06（而非原来的1.45）
+  const lobeEnhancement = 1 + Math.min(0.15, 0.02 * Math.max(0, lobeCount - 3));
+  
+  // 总增强系数：扭曲增强 × 瓣形增强
+  // 限制在1.05-1.20之间（符合物理实际）
+  // 这确保了翅化系数在合理范围内，不会出现12+这样的异常值
+  const totalEnhancement = Math.min(twistEnhancement * lobeEnhancement, 1.20);
+  
+  // 最终面积 = 基础面积 × 总增强系数
+  const areaPerTube = baseAreaPerTube * totalEnhancement;
   
   return areaPerTube;
 }
@@ -553,37 +684,19 @@ export async function calculateOverallHeatTransferCoefficient(
       innerLobeSection.equivalentDiameter
     );
     
-    // 环形通道流通面积计算（考虑安装间隙）
-    // 空隙面积 = 外圆面积 - 梅花形状面积
-    // 外圆直径 = 外管内径（outerInnerDiameter，已考虑安装间隙）
-    // 对于管外（环形空间）：梅花截面的doMax应该是麻花管外径（innerOuterDiameter），不是外管内径
-    const outerDoMax = innerOuterDiameter; // 管外梅花截面的峰顶直径（麻花管外径）
-    const outerDoMin = outerDoMax - 2 * twistToothHeight; // 管外梅花截面的谷底直径
+    // 环形通道流通面积计算（使用统一函数）
+    // 外管内径 = 外管名义内径 + 1mm安装间隙
+    // 麻花管外径 = 外管名义内径（两者相等）
+    const annulusGeometry = calculateAnnulusGeometry(
+      outerInnerDiameter,  // 外管内径（外管名义内径 + 1mm安装间隙）
+      innerOuterDiameter,  // 麻花管外径（等于外管名义内径）
+      twistToothHeight,
+      twistLobeCount,
+      twistPitch
+    );
     
-    // 外圆半径使用实际外管内径（考虑安装间隙）
-    const outerInnerRadius = outerInnerDiameter / 2; // outerInnerDiameter已考虑间隙
-    const outerCircleArea = Math.PI * Math.pow(outerInnerRadius, 2); // 外圆面积
-    
-    // 计算管外梅花截面的几何参数（用于确定梅花形状面积）
-    // 注意：梅花截面的doMax应该是麻花管外径，不是外管内径
-    const outerLobeSection = calculateLobeCrossSection(outerDoMax, outerDoMin, twistLobeCount);
-    const plumBlossomArea = outerLobeSection.area; // 梅花形状面积
-    
-    // 空隙面积 = 外圆面积 - 梅花形状面积
-    const rawAnnulusArea = outerCircleArea - plumBlossomArea;
-    
-    // 考虑螺旋通道的实际有效流通面积
-    // 由于是螺旋形，实际流通面积可能略小于横截面积
-    const spiralChannelFactor = Math.max(0.9, Math.min(1.0, 1 - 0.01 * (0.1 / twistPitch)));
-    const annulusArea = rawAnnulusArea * spiralChannelFactor;
-    
-    // 计算当量直径和湿周
-    // 外圆周长使用实际外管内径（考虑安装间隙）
-    const outerPerimeter = Math.PI * outerInnerDiameter; // outerInnerDiameter已考虑间隙
-    // 麻花管谷底周长（考虑梅花截面）
-    const innerValleyPerimeter = outerLobeSection.perimeter;
-    // 当量直径：Dh = 4 * A / (P_outer + P_inner_valley)
-    const hydraulicDiameter = (4 * annulusArea) / (outerPerimeter + innerValleyPerimeter);
+    const annulusArea = annulusGeometry.annulusArea;
+    const hydraulicDiameter = annulusGeometry.hydraulicDiameter;
     
     // 计算流速
     const annulusVelocity = coldFlowRate / (coldProps.density * annulusArea);
@@ -613,6 +726,8 @@ export async function calculateOverallHeatTransferCoefficient(
     
     // 计算传热面积（使用Do,max的周长，因为这是与外管接触的外表面）
     // 同时考虑螺旋增加的面积
+    // outerDoMax = 麻花管外径 = innerOuterDiameter（等于外管名义内径）
+    const outerDoMax = innerOuterDiameter; // 麻花管外径（等于外管名义内径）
     const baseContactPerimeter = Math.PI * outerDoMax;
     const spiralLength = length * Math.sqrt(1 + Math.pow(Math.PI * outerDoMax / twistPitch, 2));
     const totalInnerArea = baseContactPerimeter * spiralLength;
@@ -827,15 +942,128 @@ export async function calculateFlowRateFromHeatLoad(
 }
 
 /**
- * 计算换热面积
+ * 计算所需换热面积（基于传热方程）
+ * 换热面积：指传热过程中参与热量交换的传热表面积，是传热计算的核心参数之一
+ * 所需换热面积：根据传热量、传热系数和对数平均温差计算出的理论所需面积
+ * 
+ * 公式：A = Q / (U × LMTD)
+ * 其中：A - 换热面积 (m²)
+ *      Q - 传热量 (W)
+ *      U - 总传热系数 (W/m²/K)
+ *      LMTD - 对数平均温差 (°C)
+ * 
  * @param {number} heatTransferRate - 传热量 (W)
  * @param {number} lmtd - 对数平均温差 (°C)
  * @param {number} overallHeatTransferCoefficient - 总传热系数 (W/m²/K)
- * @returns {number} 换热面积 (m²)
+ * @returns {number} 所需换热面积 (m²)
  */
 export function calculateHeatTransferArea(heatTransferRate, lmtd, overallHeatTransferCoefficient) {
   // LMTD 温差值在 °C 和 K 中数值相同，直接使用
   return heatTransferRate / (overallHeatTransferCoefficient * lmtd);
+}
+
+/**
+ * 从三段计算结果中提取长度比例（基于各段面积比例）
+ * @param {Object} threeZoneResult - 三段计算结果
+ * @returns {Object} {superheatEnd: 过热段结束位置比例, condensationEnd: 冷凝段结束位置比例, ratios: {desup, cond, sub}}
+ */
+export function extractSegmentRatiosFromThreeZone(threeZoneResult) {
+  if (!threeZoneResult || !threeZoneResult.zones) {
+    return null;
+  }
+  
+  const { desuperheating, condensing, subcooling } = threeZoneResult.zones;
+  
+  // 计算各段面积
+  const Area_desup = desuperheating?.Area || 0;
+  const Area_cond = condensing?.Area || 0;
+  const Area_sub = subcooling?.Area || 0;
+  const Area_total = Area_desup + Area_cond + Area_sub;
+  
+  // 如果总面积为0，返回null
+  if (Area_total <= 0) {
+    return null;
+  }
+  
+  // 计算各段面积比例（即长度比例）
+  const ratio_desup = Area_desup / Area_total;
+  const ratio_cond = Area_cond / Area_total;
+  const ratio_sub = Area_sub / Area_total;
+  
+  return {
+    superheatEnd: ratio_desup,
+    condensationEnd: ratio_desup + ratio_cond,
+    ratios: {
+      desup: ratio_desup,
+      cond: ratio_cond,
+      sub: ratio_sub
+    }
+  };
+}
+
+/**
+ * 基于焓值计算三段长度比例（简化版本，假设各段传热系数相同）
+ * @param {string} fluid - 工质名称
+ * @param {number} massFlow - 质量流量 (kg/s)
+ * @param {number} pressure - 压力 (Pa)
+ * @param {number} tempIn - 入口温度 (K)
+ * @param {number} tempOut - 出口温度 (K)
+ * @returns {Promise<Object>} {superheatEnd: 过热段结束位置比例, condensationEnd: 冷凝段结束位置比例, ratios: {desup, cond, sub}}
+ */
+export async function calculateSegmentRatiosFromEnthalpy(fluid, massFlow, pressure, tempIn, tempOut) {
+  try {
+    const { getEnthalpy, getSaturationTemperature, getProperty } = await import('./coolprop_loader.js');
+    
+    // 查询饱和温度
+    const T_sat = await getSaturationTemperature(fluid, pressure);
+    
+    // 判断入口和出口状态
+    const isInletSuperheated = tempIn > T_sat;
+    const isOutletSubcooled = tempOut < T_sat;
+    
+    if (!isInletSuperheated && !isOutletSubcooled) {
+      // 纯冷凝段
+      return {
+        superheatEnd: 0,
+        condensationEnd: 1.0,
+        ratios: { desup: 0, cond: 1.0, sub: 0 }
+      };
+    }
+    
+    // 获取各状态点焓值
+    const h_in = await getEnthalpy(fluid, tempIn, pressure);
+    const h_sat_vap = await getProperty(fluid, 'H', 'P', pressure, 'Q', 1);
+    const h_sat_liq = await getProperty(fluid, 'H', 'P', pressure, 'Q', 0);
+    const h_out = await getEnthalpy(fluid, tempOut, pressure);
+    
+    // 计算各段热负荷
+    const Q_desup = isInletSuperheated ? Math.max(0, massFlow * (h_in - h_sat_vap)) : 0;
+    const Q_cond = Math.max(0, massFlow * (h_sat_vap - h_sat_liq));
+    const Q_sub = isOutletSubcooled ? Math.max(0, massFlow * (h_sat_liq - h_out)) : 0;
+    const Q_total = Q_desup + Q_cond + Q_sub;
+    
+    if (Q_total <= 0) {
+      return null;
+    }
+    
+    // 基于热负荷比例（假设各段U相同，长度比例 = 热负荷比例）
+    const ratio_desup = Q_desup / Q_total;
+    const ratio_cond = Q_cond / Q_total;
+    const ratio_sub = Q_sub / Q_total;
+    
+    return {
+      superheatEnd: ratio_desup,
+      condensationEnd: ratio_desup + ratio_cond,
+      ratios: {
+        desup: ratio_desup,
+        cond: ratio_cond,
+        sub: ratio_sub
+      }
+    };
+  } catch (error) {
+    console.warn('基于焓值计算三段比例失败:', error);
+    return null;
+  }
 }
 
 /**
@@ -852,6 +1080,12 @@ export function calculateHeatTransferArea(heatTransferRate, lmtd, overallHeatTra
  * @param {number} options.hotSaturationTemp - 热流体饱和温度 (°C)，冷凝过程时必需
  * @param {boolean} options.coldIsEvaporation - 冷流体是否为蒸发过程
  * @param {number} options.coldSaturationTemp - 冷流体饱和温度 (°C)，蒸发过程时必需
+ * @param {Object} options.hotSegmentRatios - 热流体三段长度比例（可选）
+ *   - superheatEnd: 过热段结束位置比例 (0-1)
+ *   - condensationEnd: 冷凝段结束位置比例 (0-1)
+ * @param {Object} options.coldSegmentRatios - 冷流体三段长度比例（可选）
+ *   - subcoolEnd: 过冷段结束位置比例 (0-1)
+ *   - evaporationEnd: 蒸发段结束位置比例 (0-1)
  * @returns {Object} {positions: [位置数组 (m)], hotTemperatures: [热流体温度数组 (°C)], coldTemperatures: [冷流体温度数组 (°C)]}
  */
 export function calculateTemperatureDistribution(
@@ -872,7 +1106,9 @@ export function calculateTemperatureDistribution(
     hotIsCondensation = false,
     hotSaturationTemp = null,
     coldIsEvaporation = false,
-    coldSaturationTemp = null
+    coldSaturationTemp = null,
+    hotSegmentRatios = null,
+    coldSegmentRatios = null
   } = options;
   
   // 计算温度变化率
@@ -890,28 +1126,53 @@ export function calculateTemperatureDistribution(
     // 判断出口是否过冷
     const isOutletSubcooled = hotTout < hotSaturationTemp;
     
-    if (isInletSuperheated && isOutletSubcooled) {
-      // 三段：过热蒸汽冷却 -> 冷凝 -> 过冷液体冷却
-      // 需要计算各段的长度比例（基于焓值或简化假设）
-      // 简化：假设过热段和过冷段各占20%，冷凝段占60%
-      hotSuperheatStart = 0;
-      hotSuperheatEnd = 0.2;
-      hotCondensationEnd = 0.8;
-    } else if (isInletSuperheated) {
-      // 两段：过热蒸汽冷却 -> 冷凝
-      hotSuperheatStart = 0;
-      hotSuperheatEnd = 0.3; // 假设过热段占30%
-      hotCondensationEnd = 1.0;
-    } else if (isOutletSubcooled) {
-      // 两段：冷凝 -> 过冷液体冷却
-      hotSuperheatStart = null;
-      hotSuperheatEnd = 0;
-      hotCondensationEnd = 0.7; // 假设冷凝段占70%
+    // 如果提供了三段比例，优先使用
+    if (hotSegmentRatios && hotSegmentRatios.superheatEnd !== undefined && hotSegmentRatios.condensationEnd !== undefined) {
+      if (isInletSuperheated && isOutletSubcooled) {
+        // 三段：使用提供的比例
+        hotSuperheatStart = 0;
+        hotSuperheatEnd = Math.max(0, Math.min(1, hotSegmentRatios.superheatEnd));
+        hotCondensationEnd = Math.max(hotSuperheatEnd, Math.min(1, hotSegmentRatios.condensationEnd));
+      } else if (isInletSuperheated) {
+        // 两段：过热 + 冷凝
+        hotSuperheatStart = 0;
+        hotSuperheatEnd = Math.max(0, Math.min(1, hotSegmentRatios.superheatEnd));
+        hotCondensationEnd = 1.0;
+      } else if (isOutletSubcooled) {
+        // 两段：冷凝 + 过冷
+        hotSuperheatStart = null;
+        hotSuperheatEnd = 0;
+        hotCondensationEnd = Math.max(0, Math.min(1, hotSegmentRatios.condensationEnd));
+      } else {
+        // 纯冷凝段
+        hotSuperheatStart = null;
+        hotSuperheatEnd = 0;
+        hotCondensationEnd = 1.0;
+      }
     } else {
-      // 纯冷凝段
-      hotSuperheatStart = null;
-      hotSuperheatEnd = 0;
-      hotCondensationEnd = 1.0;
+      // 未提供比例，使用简化假设（向后兼容）
+      if (isInletSuperheated && isOutletSubcooled) {
+        // 三段：过热蒸汽冷却 -> 冷凝 -> 过冷液体冷却
+        // 简化：假设过热段和过冷段各占20%，冷凝段占60%
+        hotSuperheatStart = 0;
+        hotSuperheatEnd = 0.2;
+        hotCondensationEnd = 0.8;
+      } else if (isInletSuperheated) {
+        // 两段：过热蒸汽冷却 -> 冷凝
+        hotSuperheatStart = 0;
+        hotSuperheatEnd = 0.3; // 假设过热段占30%
+        hotCondensationEnd = 1.0;
+      } else if (isOutletSubcooled) {
+        // 两段：冷凝 -> 过冷液体冷却
+        hotSuperheatStart = null;
+        hotSuperheatEnd = 0;
+        hotCondensationEnd = 0.7; // 假设冷凝段占70%
+      } else {
+        // 纯冷凝段
+        hotSuperheatStart = null;
+        hotSuperheatEnd = 0;
+        hotCondensationEnd = 1.0;
+      }
     }
   }
   
@@ -924,26 +1185,53 @@ export function calculateTemperatureDistribution(
     const isInletSubcooled = coldTin < coldSaturationTemp;
     const isOutletSuperheated = coldTout > coldSaturationTemp;
     
-    if (isInletSubcooled && isOutletSuperheated) {
-      // 三段：过冷液体加热 -> 蒸发 -> 过热蒸汽加热
-      coldSubcoolStart = 0;
-      coldSubcoolEnd = 0.2;
-      coldEvaporationEnd = 0.8;
-    } else if (isInletSubcooled) {
-      // 两段：过冷液体加热 -> 蒸发
-      coldSubcoolStart = 0;
-      coldSubcoolEnd = 0.3;
-      coldEvaporationEnd = 1.0;
-    } else if (isOutletSuperheated) {
-      // 两段：蒸发 -> 过热蒸汽加热
-      coldSubcoolStart = null;
-      coldSubcoolEnd = 0;
-      coldEvaporationEnd = 0.7;
+    // 如果提供了三段比例，优先使用（注意：coldSegmentRatios的结构可能需要调整）
+    // 这里暂时保持原有逻辑，后续可以根据需要扩展
+    if (coldSegmentRatios && coldSegmentRatios.subcoolEnd !== undefined && coldSegmentRatios.evaporationEnd !== undefined) {
+      if (isInletSubcooled && isOutletSuperheated) {
+        // 三段：使用提供的比例
+        coldSubcoolStart = 0;
+        coldSubcoolEnd = Math.max(0, Math.min(1, coldSegmentRatios.subcoolEnd));
+        coldEvaporationEnd = Math.max(coldSubcoolEnd, Math.min(1, coldSegmentRatios.evaporationEnd));
+      } else if (isInletSubcooled) {
+        // 两段：过冷 + 蒸发
+        coldSubcoolStart = 0;
+        coldSubcoolEnd = Math.max(0, Math.min(1, coldSegmentRatios.subcoolEnd));
+        coldEvaporationEnd = 1.0;
+      } else if (isOutletSuperheated) {
+        // 两段：蒸发 + 过热
+        coldSubcoolStart = null;
+        coldSubcoolEnd = 0;
+        coldEvaporationEnd = Math.max(0, Math.min(1, coldSegmentRatios.evaporationEnd));
+      } else {
+        // 纯蒸发段
+        coldSubcoolStart = null;
+        coldSubcoolEnd = 0;
+        coldEvaporationEnd = 1.0;
+      }
     } else {
-      // 纯蒸发段
-      coldSubcoolStart = null;
-      coldSubcoolEnd = 0;
-      coldEvaporationEnd = 1.0;
+      // 未提供比例，使用简化假设（向后兼容）
+      if (isInletSubcooled && isOutletSuperheated) {
+        // 三段：过冷液体加热 -> 蒸发 -> 过热蒸汽加热
+        coldSubcoolStart = 0;
+        coldSubcoolEnd = 0.2;
+        coldEvaporationEnd = 0.8;
+      } else if (isInletSubcooled) {
+        // 两段：过冷液体加热 -> 蒸发
+        coldSubcoolStart = 0;
+        coldSubcoolEnd = 0.3;
+        coldEvaporationEnd = 1.0;
+      } else if (isOutletSuperheated) {
+        // 两段：蒸发 -> 过热蒸汽加热
+        coldSubcoolStart = null;
+        coldSubcoolEnd = 0;
+        coldEvaporationEnd = 0.7;
+      } else {
+        // 纯蒸发段
+        coldSubcoolStart = null;
+        coldSubcoolEnd = 0;
+        coldEvaporationEnd = 1.0;
+      }
     }
   }
   
@@ -1410,6 +1698,549 @@ export function calculateTwistedTubeFrictionFactor(
 }
 
 /**
+ * ===== 管外冷凝三段计算法（Three-Zone Model） =====
+ */
+
+/**
+ * 计算管外冷凝的三段热负荷分配
+ * @param {string} fluid - 制冷剂名称
+ * @param {number} massFlow - 质量流量 (kg/s)
+ * @param {number} pressure - 冷凝压力 (Pa)
+ * @param {number} tempIn - 入口温度 (K) - 过热气体
+ * @param {number} tempOut - 出口温度 (K) - 过冷液体
+ * @returns {Object} 包含三段热负荷和状态点的对象
+ */
+export async function calculateCondenserZones(fluid, massFlow, pressure, tempIn, tempOut) {
+  const { getEnthalpy, getSaturationTemperature, getProperty } = await import('./coolprop_loader.js');
+  
+  // 查询饱和温度
+  const T_sat = await getSaturationTemperature(fluid, pressure);
+  
+  // 查询各状态点的焓值
+  const h_in = await getEnthalpy(fluid, tempIn, pressure);           // 过热气体入口焓
+  const h_sat_vap = await getProperty(fluid, 'H', 'P', pressure, 'Q', 1);  // 饱和蒸汽焓 (x=1)
+  const h_sat_liq = await getProperty(fluid, 'H', 'P', pressure, 'Q', 0);  // 饱和液体焓 (x=0)
+  const h_out = await getEnthalpy(fluid, tempOut, pressure);         // 过冷液体出口焓
+  
+  // 计算三段热负荷
+  const Q_desup = massFlow * (h_in - h_sat_vap);        // 过热段
+  const Q_cond = massFlow * (h_sat_vap - h_sat_liq);    // 冷凝段（潜热）
+  const Q_sub = massFlow * (h_sat_liq - h_out);         // 过冷段
+  const Q_total = Q_desup + Q_cond + Q_sub;
+  
+  return {
+    zones: {
+      desuperheating: {
+        Q: Q_desup,
+        T_in: tempIn,
+        T_out: T_sat,
+        h_in: h_in,
+        h_out: h_sat_vap,
+        phase: 'superheated_vapor'
+      },
+      condensing: {
+        Q: Q_cond,
+        T_in: T_sat,
+        T_out: T_sat,
+        h_in: h_sat_vap,
+        h_out: h_sat_liq,
+        phase: 'two_phase'
+      },
+      subcooling: {
+        Q: Q_sub,
+        T_in: T_sat,
+        T_out: tempOut,
+        h_in: h_sat_liq,
+        h_out: h_out,
+        phase: 'subcooled_liquid'
+      }
+    },
+    T_sat: T_sat,
+    Q_total: Q_total
+  };
+}
+
+/**
+ * 计算环隙当量直径（简化公式，适用于单根内管）
+ * @param {number} outerInnerDiameter - 外管内径 (m)
+ * @param {number} tubeOuterDiameter - 内管外径 (m) - 麻花管包络圆直径
+ * @returns {number} 当量直径 (m)
+ */
+export function calculateAnnulusEquivalentDiameter(outerInnerDiameter, tubeOuterDiameter) {
+  // De = (D_shell^2 - D_tube^2) / (D_shell + D_tube)
+  const D_shell = outerInnerDiameter;
+  const D_tube = tubeOuterDiameter;
+  return (D_shell * D_shell - D_tube * D_tube) / (D_shell + D_tube);
+}
+
+/**
+ * 计算环隙当量直径（基于环形间隙面积+梅花截面积）
+ * 定义：环形间隙面积 + 梅花截面积 = A，然后 A = π/4 * D²，D 即为环隙当量直径
+ * @param {number} outerInnerDiameter - 外管内径 (m)
+ * @param {number} innerOuterDiameter - 内管外径 (m) - 麻花管外径（峰顶直径Do,max）
+ * @param {number} gap - 环形间隙 (m)，默认1mm = 0.001m
+ * @param {number} lobeCount - 梅花管头数（瓣数，3-6）
+ * @param {number} toothHeight - 梅花管齿高 (m)，如果不提供则根据doMax和doMin计算
+ * @param {number} innerDoMin - 梅花管谷底直径Do,min (m)，如果不提供则根据doMax和toothHeight计算
+ * @returns {Object} {equivalentDiameter: 环隙当量直径 (m), annularGapArea: 环形间隙面积 (m²), lobeArea: 梅花截面积 (m²), totalArea: 总面积A (m²)}
+ */
+export function calculateAnnulusEquivalentDiameterWithLobe(
+  outerInnerDiameter,
+  innerOuterDiameter,
+  gap = 0.001, // 默认1mm间隙
+  lobeCount = 4,
+  toothHeight = null,
+  innerDoMin = null
+) {
+  // 计算实际的内管外径（考虑间隙）
+  // 如果外管内径与内管外径之间有gap的间隙，那么：
+  // 外管内径 = 内管外径 + gap
+  // 但这里我们直接使用提供的参数，gap用于计算环形间隙面积
+  
+  // 1. 计算环形间隙面积
+  // 环形间隙面积 = π/4 * (外管内径² - 内管外径²)
+  // 注意：如果外管内径 = 内管外径 + gap，那么环形间隙面积 = π/4 * ((内管外径+gap)² - 内管外径²)
+  const innerOuterRadius = innerOuterDiameter / 2;
+  const outerInnerRadius = outerInnerDiameter / 2;
+  
+  // 环形间隙面积 = 外圆面积 - 内圆面积
+  const annularGapArea = Math.PI * (Math.pow(outerInnerRadius, 2) - Math.pow(innerOuterRadius, 2));
+  
+  // 2. 计算梅花截面积
+  // 确定梅花管的doMax和doMin
+  const doMax = innerOuterDiameter; // 峰顶直径
+  let doMin;
+  
+  if (innerDoMin !== null && innerDoMin > 0) {
+    doMin = innerDoMin;
+  } else if (toothHeight !== null && toothHeight > 0) {
+    doMin = doMax - 2 * toothHeight;
+  } else {
+    // 如果没有提供，使用默认值：假设齿高为外径的5%
+    const defaultToothHeight = doMax * 0.05;
+    doMin = doMax - 2 * defaultToothHeight;
+  }
+  
+  // 使用calculateLobeCrossSection计算梅花截面积
+  const lobeSection = calculateLobeCrossSection(doMax, doMin, lobeCount);
+  const lobeArea = lobeSection.area;
+  
+  // 3. 计算总面积 A = 环形间隙面积 + 梅花截面积
+  const totalArea = annularGapArea + lobeArea;
+  
+  // 4. 从 A = π/4 * D² 反推：D = sqrt(4A/π)
+  const equivalentDiameter = Math.sqrt(4 * totalArea / Math.PI);
+  
+  return {
+    equivalentDiameter,  // 环隙当量直径 (m)
+    annularGapArea,      // 环形间隙面积 (m²)
+    lobeArea,            // 梅花截面积 (m²)
+    totalArea            // 总面积A (m²)
+  };
+}
+
+/**
+ * 计算管外（环隙）单相气体传热系数（过热段）
+ * @param {Object} gasProps - 气体物性
+ * @param {number} massFlux - 质量通量 (kg/m²/s)
+ * @param {number} equivalentDiameter - 当量直径 (m)
+ * @param {number} enhancementFactor - 麻花管增强因子（湍流增强：1.6 ~ 2.0）
+ * @returns {number} 传热系数 (W/m²/K)
+ */
+export function calculateAnnulusGasHTC(gasProps, massFlux, equivalentDiameter, enhancementFactor = 1.8) {
+  const G = massFlux;
+  const De = equivalentDiameter;
+  const k = gasProps.thermalConductivity;
+  const mu = gasProps.viscosity;
+  const Pr = gasProps.prandtl;
+  
+  // Dittus-Boelter 关联式（湍流，气体被冷却：Pr指数0.4）
+  const Re = (G * De) / mu;
+  const Nu = 0.023 * Math.pow(Re, 0.8) * Math.pow(Pr, 0.4);
+  const h_base = Nu * k / De;
+  
+  // 应用麻花管增强因子（湍流增强：1.6 ~ 2.0）
+  const phi_turb = Math.min(2.0, Math.max(1.0, enhancementFactor));
+  return h_base * phi_turb;
+}
+
+/**
+ * 计算管外冷凝传热系数（冷凝段）- 基于 Nusselt 膜状冷凝理论 + 麻花管增强
+ * @param {Object} liquidProps - 饱和液体物性
+ * @param {Object} vaporProps - 饱和蒸汽物性
+ * @param {number} equivalentDiameter - 当量直径 (m)
+ * @param {number} wallTemperature - 壁面温度 (K)（平均水温度近似）
+ * @param {number} saturationTemperature - 饱和温度 (K)
+ * @param {number} enhancementFactor - 麻花管增强因子（冷凝段通常 2.0 ~ 3.5）
+ * @param {string} fluid - 工质名称
+ * @returns {number} 冷凝传热系数 (W/m²/K)
+ */
+export async function calculateAnnulusCondensingHTC(
+  liquidProps, 
+  vaporProps, 
+  equivalentDiameter,
+  wallTemperature,
+  saturationTemperature,
+  enhancementFactor = 2.5,
+  fluid
+) {
+  const { loadCoolProp } = await import('./coolprop_loader.js');
+  const CoolProp = await loadCoolProp();
+  
+  const De = equivalentDiameter;
+  const kL = liquidProps.thermalConductivity;
+  const muL = liquidProps.viscosity;
+  const rhoL = liquidProps.density;
+  const rhoV = vaporProps.density;
+  const cpL = liquidProps.specificHeat;
+  const hfg = vaporProps.enthalpy - liquidProps.enthalpy; // 汽化潜热
+  
+  // 查询表面张力
+  let sigma;
+  try {
+    sigma = CoolProp.PropsSI('I', 'T', saturationTemperature, 'Q', 0, fluid);
+    if (!isFinite(sigma) || sigma <= 0) {
+      throw new Error('表面张力查询返回无效值');
+    }
+  } catch (e) {
+    sigma = 0.05; // 默认值
+    console.warn(`无法查询${fluid}的表面张力，使用默认值: ${sigma} N/m`);
+  }
+  
+  const dT = Math.max(saturationTemperature - wallTemperature, 0.1);
+  const g = 9.81; // 重力加速度
+  
+  // Nusselt 膜状冷凝理论（水平管束或水平套管）
+  // h_Nusselt = 0.725 * [g * rhoL^2 * kL^3 * hfg / (muL * De * dT)]^(1/4)
+  // 注意：对于环隙（套管），De 使用当量直径
+  const h_Nusselt = 0.725 * Math.pow(
+    (g * rhoL * rhoL * kL * kL * kL * hfg) / (muL * De * dT),
+    0.25
+  );
+  
+  // 应用麻花管增强因子（Gregorig 效应：2.0 ~ 3.5）
+  const C_enhancement = Math.min(3.5, Math.max(1.0, enhancementFactor));
+  return h_Nusselt * C_enhancement;
+}
+
+/**
+ * 计算管外单相液体传热系数（过冷段）
+ * @param {Object} liquidProps - 液体物性
+ * @param {number} massFlux - 质量通量 (kg/m²/s)
+ * @param {number} equivalentDiameter - 当量直径 (m)
+ * @param {number} enhancementFactor - 麻花管增强因子（湍流增强：1.6 ~ 2.0）
+ * @returns {number} 传热系数 (W/m²/K)
+ */
+export function calculateAnnulusLiquidHTC(liquidProps, massFlux, equivalentDiameter, enhancementFactor = 1.8) {
+  const G = massFlux;
+  const De = equivalentDiameter;
+  const k = liquidProps.thermalConductivity;
+  const mu = liquidProps.viscosity;
+  const Pr = liquidProps.prandtl;
+  
+  // Dittus-Boelter 关联式（液体被冷却：Pr指数0.3）
+  const Re = (G * De) / mu;
+  const Nu = 0.023 * Math.pow(Re, 0.8) * Math.pow(Pr, 0.3);
+  const h_base = Nu * k / De;
+  
+  // 应用麻花管增强因子
+  const phi_turb = Math.min(2.0, Math.max(1.0, enhancementFactor));
+  return h_base * phi_turb;
+}
+
+/**
+ * 管外冷凝三段计算主函数
+ * @param {Object} params - 计算参数
+ * @returns {Object} 计算结果
+ */
+export async function calculateAnnulusCondenserThreeZone(params) {
+  const {
+    refrigerant,           // 制冷剂名称
+    massFlow,              // 制冷剂质量流量 (kg/s)
+    pressure,              // 冷凝压力 (Pa)
+    tempIn,                // 入口温度 (K) - 过热气体
+    tempOut,               // 出口温度 (K) - 过冷液体
+    geometry,              // 几何参数 {outerInnerDiameter, tubeOuterDiameter, tubeInnerDiameter, wallThickness}
+    waterInTemp,           // 冷却水入口温度 (K)
+    waterFlowRate,         // 冷却水质量流量 (kg/s)
+    enhancementFactors = { // 增强因子
+      desup: 1.8,          // 过热段：1.6 ~ 2.0
+      cond: 2.5,           // 冷凝段：2.0 ~ 3.5
+      sub: 1.8             // 过冷段：1.6 ~ 2.0
+    },
+    flowType = 'counter',  // 流动方式：'counter' 或 'parallel'
+    waterProps = null,     // 水侧物性（可选，如果为null则使用默认值）
+    tubeMaterial = 'stainless-steel-304',
+    foulingInner = 0,
+    foulingOuter = 0,
+    passCount = 1,
+    // 麻花管参数（可选）
+    isTwisted = false,     // 是否为麻花管
+    twistLobeCount = 6,    // 麻花管头数（瓣数）
+    twistToothHeight = 0.003  // 齿高 (m)
+  } = params;
+  
+  // ===== 第一步：确定分段点（热力学计算） =====
+  const zonesResult = await calculateCondenserZones(refrigerant, massFlow, pressure, tempIn, tempOut);
+  const { zones, T_sat } = zonesResult;
+  const { desuperheating, condensing, subcooling } = zones;
+  
+  // ===== 第二步：计算冷却水侧温度节点（逆流假设） =====
+  // 水的比热容（从物性或默认值）
+  let cp_water = 4186; // 默认值 J/kg/K
+  if (waterProps && waterProps.specificHeat) {
+    cp_water = waterProps.specificHeat;
+  }
+  
+  // 检查分段数据是否有效
+  if (!desuperheating || !condensing || !subcooling) {
+    throw new Error('三段计算失败：无法获取有效的分段数据');
+  }
+  
+  const Q_desup = desuperheating.Q;
+  const Q_cond = condensing.Q;
+  const Q_sub = subcooling.Q;
+  
+  // 根据能量守恒计算水侧温度节点
+  const deltaT_water_desup = Q_desup / (waterFlowRate * cp_water);
+  const deltaT_water_cond = Q_cond / (waterFlowRate * cp_water);
+  const deltaT_water_sub = Q_sub / (waterFlowRate * cp_water);
+  
+  let T_w1, T_w2, T_water_out;
+  if (flowType === 'counter') {
+    // 逆流：水从低温到高温流动（与制冷剂相反）
+    // T_water_out <-- Desup --> T_w2 <-- Cond --> T_w1 <-- Sub --> T_water_in
+    T_water_out = waterInTemp + (deltaT_water_desup + deltaT_water_cond + deltaT_water_sub);
+    T_w2 = T_water_out - deltaT_water_desup;
+    T_w1 = T_w2 - deltaT_water_cond;
+  } else {
+    // 并流：水与制冷剂同向流动
+    // T_water_in <-- Sub --> T_w1 <-- Cond --> T_w2 <-- Desup --> T_water_out
+    T_w1 = waterInTemp + deltaT_water_sub;
+    T_w2 = T_w1 + deltaT_water_cond;
+    T_water_out = T_w2 + deltaT_water_desup;
+  }
+  
+  // ===== 第三步：计算几何参数（管内和管外当量直径） =====
+  
+  // 计算管外（环隙）当量直径
+  const outerEquivalentDiameter = calculateAnnulusEquivalentDiameter(
+    geometry.outerInnerDiameter,
+    geometry.tubeOuterDiameter
+  );
+  
+  // 计算管内当量直径
+  let innerEquivalentDiameter;
+  let innerArea;
+  if (isTwisted && twistLobeCount && twistToothHeight) {
+    // 麻花管：使用梅花截面计算管内当量直径
+    // 管内梅花截面：doMax = 管内径，doMin = doMax - 2*齿高
+    const innerDoMax = geometry.tubeInnerDiameter; // 管内径（峰顶外接圆）
+    const innerDoMin = innerDoMax - 2 * twistToothHeight; // 谷底内切圆
+    
+    const innerLobeSection = calculateLobeCrossSection(innerDoMax, innerDoMin, twistLobeCount);
+    innerEquivalentDiameter = innerLobeSection.equivalentDiameter;
+    innerArea = innerLobeSection.area;
+  } else {
+    // 直管：管内当量直径等于内径
+    innerEquivalentDiameter = geometry.tubeInnerDiameter;
+    innerArea = Math.PI * Math.pow(geometry.tubeInnerDiameter / 2, 2);
+  }
+  
+  const annulusArea = Math.PI * (geometry.outerInnerDiameter * geometry.outerInnerDiameter 
+                                  - geometry.tubeOuterDiameter * geometry.tubeOuterDiameter) / 4;
+  const massFlux = massFlow / annulusArea;
+  
+  // 使用管外当量直径进行后续计算（保持变量名De以保持代码一致性）
+  const De = outerEquivalentDiameter;
+  
+  // ===== 第四步：获取物性 =====
+  const gasProps = await getFluidProperties(refrigerant, tempIn, pressure);
+  const liquidProps = await getFluidProperties(refrigerant, tempOut, pressure);
+  const satLiquidProps = await getFluidProperties(refrigerant, T_sat, pressure);
+  
+  // 获取饱和蒸汽物性
+  // 注意：在饱和温度下，使用 getFluidProperties 查询时可能会遇到两相区问题
+  // 因此需要先查询干度为1时的物性，或者直接使用 getFluidPropertiesTwoPhase
+  let satVaporProps;
+  try {
+    // 尝试使用两相流物性查询
+    const { getFluidPropertiesTwoPhase } = await import('./coolprop_loader.js');
+    const twoPhaseProps = await getFluidPropertiesTwoPhase(refrigerant, T_sat, pressure, 1.0);
+    satVaporProps = twoPhaseProps.vaporProps;
+  } catch (e) {
+    // 如果失败，尝试使用单相物性查询（在饱和温度下可能失败）
+    console.warn('无法使用两相流物性查询饱和蒸汽，尝试单相查询:', e);
+    satVaporProps = await getFluidProperties(refrigerant, T_sat + 0.1, pressure); // 稍微提高温度避免两相区
+  }
+  
+  // 水侧物性（使用平均温度）
+  const waterAvgTemp = (waterInTemp + T_water_out) / 2;
+  let waterProps_actual = waterProps;
+  if (!waterProps_actual) {
+    // 使用默认水的物性（简化处理）
+    waterProps_actual = {
+      specificHeat: cp_water,
+      thermalConductivity: 0.6,  // 约0.6 W/m/K
+      viscosity: 0.001,           // 约0.001 Pa·s
+      density: 1000,              // 约1000 kg/m³
+      prandtl: 7.0                // 约7
+    };
+  }
+  
+  // ===== 第五步：计算各段传热系数 =====
+  // 过热段传热系数（环隙气体）
+  const h_desup = calculateAnnulusGasHTC(
+    gasProps, massFlux, De, enhancementFactors.desup
+  );
+  
+  // 冷凝段传热系数（管外冷凝）
+  const wallTemp_cond = (T_w1 + T_w2) / 2; // 壁面温度用平均水温度近似
+  const h_cond = await calculateAnnulusCondensingHTC(
+    satLiquidProps, satVaporProps, De,
+    wallTemp_cond, T_sat,
+    enhancementFactors.cond,
+    refrigerant
+  );
+  
+  // 过冷段传热系数（环隙液体）
+  const h_sub = calculateAnnulusLiquidHTC(
+    liquidProps, massFlux, De, enhancementFactors.sub
+  );
+  
+  // 计算管内（水侧）传热系数（单相流，使用现有的计算函数）
+  const waterInnerDiameter = geometry.tubeInnerDiameter;
+  const waterArea = Math.PI * Math.pow(waterInnerDiameter / 2, 2);
+  const waterVelocity = waterFlowRate / (waterProps_actual.density * waterArea);
+  const waterRe = calculateReynoldsNumber(
+    waterProps_actual.density,
+    waterVelocity,
+    waterInnerDiameter,
+    waterProps_actual.viscosity
+  );
+  const waterNu = calculateNusseltNumber(waterRe, waterProps_actual.prandtl, true); // 水被加热
+  const h_water = calculateConvectiveHeatTransferCoefficient(
+    waterNu,
+    waterProps_actual.thermalConductivity,
+    waterInnerDiameter
+  );
+  
+  // ===== 第六步：计算总传热系数 U =====
+  // 1/U = 1/h_out + R_wall + 1/h_in + R_fouling
+  const tubeThermalConductivity = getMaterialThermalConductivity(tubeMaterial);
+  const wallThickness = geometry.wallThickness || 0.002; // 默认2mm
+  const meanDiameter = (geometry.tubeOuterDiameter + geometry.tubeInnerDiameter) / 2;
+  
+  // 管壁热阻（简化处理，基于平均直径）
+  // R_wall ≈ δ / (k * π * D_mean)，这里简化为基于单位长度的热阻
+  const R_wall_unit = wallThickness / (tubeThermalConductivity * Math.PI * meanDiameter);
+  // 转换为基于传热面积的单位热阻（简化处理）
+  const R_wall = R_wall_unit * Math.PI * geometry.tubeOuterDiameter;
+  
+  // 计算各段的总传热系数
+  const U_desup = 1 / (1/h_desup + R_wall + 1/h_water + foulingOuter + foulingInner);
+  const U_cond = 1 / (1/h_cond + R_wall + 1/h_water + foulingOuter + foulingInner);
+  const U_sub = 1 / (1/h_sub + R_wall + 1/h_water + foulingOuter + foulingInner);
+  
+  // ===== 第七步：计算各段 LMTD =====
+  const LMTD_desup = calculateLMTD(
+    tempIn - 273.15, T_sat - 273.15,
+    T_water_out - 273.15, T_w2 - 273.15,
+    flowType
+  );
+  
+  const LMTD_cond = calculateLMTD(
+    T_sat - 273.15, T_sat - 273.15,
+    T_w2 - 273.15, T_w1 - 273.15,
+    flowType
+  );
+  
+  const LMTD_sub = calculateLMTD(
+    T_sat - 273.15, tempOut - 273.15,
+    T_w1 - 273.15, waterInTemp - 273.15,
+    flowType
+  );
+  
+  // ===== 第八步：计算各段所需传热面积 =====
+  const Area_desup = Q_desup / (U_desup * LMTD_desup);
+  const Area_cond = Q_cond / (U_cond * LMTD_cond);
+  const Area_sub = Q_sub / (U_sub * LMTD_sub);
+  const Area_total = Area_desup + Area_cond + Area_sub;
+  
+  return {
+    zones: {
+      desuperheating: {
+        Q: Q_desup,
+        Area: Area_desup,
+        U: U_desup,
+        h: h_desup,
+        h_water: h_water,
+        LMTD: LMTD_desup,
+        T_ref_in: tempIn - 273.15,
+        T_ref_out: T_sat - 273.15,
+        T_water_in: (flowType === 'counter' ? T_water_out : waterInTemp) - 273.15,
+        T_water_out: (flowType === 'counter' ? T_w2 : T_w1) - 273.15
+      },
+      condensing: {
+        Q: Q_cond,
+        Area: Area_cond,
+        U: U_cond,
+        h: h_cond,
+        h_water: h_water,
+        LMTD: LMTD_cond,
+        T_ref_in: T_sat - 273.15,
+        T_ref_out: T_sat - 273.15,
+        T_water_in: (flowType === 'counter' ? T_w2 : T_w1) - 273.15,
+        T_water_out: (flowType === 'counter' ? T_w1 : T_w2) - 273.15
+      },
+      subcooling: {
+        Q: Q_sub,
+        Area: Area_sub,
+        U: U_sub,
+        h: h_sub,
+        h_water: h_water,
+        LMTD: LMTD_sub,
+        T_ref_in: T_sat - 273.15,
+        T_ref_out: tempOut - 273.15,
+        T_water_in: (flowType === 'counter' ? T_w1 : waterInTemp) - 273.15,
+        T_water_out: (flowType === 'counter' ? waterInTemp : T_w1) - 273.15
+      }
+    },
+    total: {
+      Q_total: zonesResult.Q_total,
+      Area_total: Area_total,
+      T_sat: T_sat - 273.15
+    },
+    water_temperatures: {
+      T_in: waterInTemp - 273.15,
+      T_w1: T_w1 - 273.15,
+      T_w2: T_w2 - 273.15,
+      T_out: T_water_out - 273.15
+    },
+    geometry: {
+      // 管内几何参数
+      innerEquivalentDiameter: innerEquivalentDiameter,  // 管内当量直径 (m)
+      innerHydraulicDiameter: innerEquivalentDiameter,    // 管内水力直径 (m) - 对于麻花管，等于当量直径
+      innerDiameter: geometry.tubeInnerDiameter,          // 管内径 (m)
+      innerArea: innerArea,                              // 管内流通面积 (m²)
+      isTwisted: isTwisted,                              // 是否为麻花管
+      
+      // 管外（环隙）几何参数
+      outerEquivalentDiameter: outerEquivalentDiameter,  // 管外（环隙）当量直径 (m)
+      outerHydraulicDiameter: outerEquivalentDiameter,    // 管外（环隙）水力直径 (m) - 对于三段计算，使用当量直径
+      outerAreaEquivalentDiameter: Math.sqrt(4 * annulusArea / Math.PI), // 环隙面积当量直径 (m) - 基于面积
+      outerInnerDiameter: geometry.outerInnerDiameter,   // 外管内径 (m)
+      tubeOuterDiameter: geometry.tubeOuterDiameter,     // 内管外径 (m)
+      annulusArea: annulusArea,                          // 环隙流通面积 (m²)
+      
+      // 其他参数
+      massFlux: massFlux,                                // 质量通量 (kg/m²/s) - 基于环隙面积
+      equivalentDiameter: outerEquivalentDiameter        // 向后兼容：管外当量直径（保留此字段，但明确为环隙当量直径）
+    }
+  };
+}
+
+/**
  * 套管换热器完整计算
  * @param {Object} params - 计算参数
  * @returns {Promise<Object>} 计算结果
@@ -1461,6 +2292,7 @@ export async function calculateHeatExchanger(params) {
     twistWallThickness = null, // 麻花管壁厚（null表示使用内管壁厚）
     twistOuterDiameter = null, // 麻花管外径（null表示使用外管内径，贴合状态）
     innerWallThickness = null, // 内管壁厚 (m)
+    outerWallThickness = null, // 外管壁厚 (m)
     tubeMaterial = 'stainless-steel-304',  // 内管材质ID
     foulingInner = 0,  // 管内污垢热阻 (m²·K/W)
     foulingOuter = 0,  // 管外污垢热阻 (m²·K/W)
@@ -1580,21 +2412,29 @@ export async function calculateHeatExchanger(params) {
   // 这样可以确保环形空间计算时考虑了安装间隙
   const effectiveOuterInnerDiameter = innerDiameter + totalGap;
   
+  // 计算外管名义内径
+  // 外管名义内径 = 外管外径 - 2 × 外管壁厚
+  const outerInnerDiameterNominal = outerDiameter - 2 * (outerWallThickness || (outerDiameter - outerInnerDiameter) / 2);
+  
   // 麻花管模式下，确定实际的几何参数
   let actualInnerOuterDiameter = innerDiameter; // 用于传热面积（内管外径）
   let actualInnerInnerDiameter = innerInnerDiameter; // 用于流速计算
   
   if (actualIsTwisted) {
-    // 麻花管外径 = 内管外径（用户输入值）
-    actualInnerOuterDiameter = twistOuterDiameter || innerDiameter;
+    // 麻花管外径 = 外管名义内径（两者相等）
+    actualInnerOuterDiameter = outerInnerDiameterNominal;
     // 麻花管内径 = 外径 - 2×壁厚
     const wallThickness = twistWallThickness || (innerDiameter - innerInnerDiameter) / 2;
     actualInnerInnerDiameter = actualInnerOuterDiameter - 2 * wallThickness;
   }
   
   // 使用有效外管内径（考虑间隙）进行环形空间计算
-  // 注意：effectiveOuterInnerDiameter = actualInnerOuterDiameter + totalGap
-  const annulusOuterInnerDiameter = actualInnerOuterDiameter + totalGap;
+  // 外管内径 = 外管名义内径 + 1mm安装间隙
+  // 对于麻花管：麻花管外径 = 外管名义内径（两者相等）
+  // 对于直管：外管内径 = 内管外径 + 安装间隙
+  const annulusOuterInnerDiameter = actualIsTwisted
+    ? outerInnerDiameterNominal + totalGap  // 麻花管：外管名义内径 + 1mm安装间隙
+    : actualInnerOuterDiameter + totalGap;  // 直管：内管外径 + 1mm安装间隙
 
   try {
     // 1. 根据输入模式计算传热量和流量
@@ -1764,60 +2604,208 @@ export async function calculateHeatExchanger(params) {
         ? ((calcColdQualityIn || 0) + (calcColdQualityOut || 0)) / 2 
         : (coldIsCondensation || coldIsEvaporation ? 0.5 : null);
 
-      [hotProps, coldProps] = await Promise.all([
-        hotIsTwoPhase && hotQualityAvg !== null
-          ? getFluidPropertiesTwoPhase(calcHotFluid, calcHotTavg, calcHotPressurePa, hotQualityAvg)
-          : getFluidProperties(calcHotFluid, calcHotTavg, calcHotPressurePa),
-        coldIsTwoPhase && coldQualityAvg !== null
-          ? getFluidPropertiesTwoPhase(calcColdFluid, calcColdTavg, calcColdPressurePa, coldQualityAvg)
-          : getFluidProperties(calcColdFluid, calcColdTavg, calcColdPressurePa)
-      ]);
+      // ===== 检测是否为"管外冷凝"工况，使用三段计算法 =====
+      const isAnnulusCondensation = hotFluidLocation === 'outer' && 
+                                    hotProcessType === 'condensation' &&
+                                    hotStateIn === 1 && 
+                                    hotStateOut === 0 &&
+                                    hotTin > hotTout; // 确保温度递减
 
-      // 确定使用的壁厚（麻花管使用twistWallThickness，否则使用innerWallThickness）
-      // 如果参数中未提供innerWallThickness，从几何尺寸计算
-      let actualInnerWallThickness = innerWallThickness;
-      if (!actualInnerWallThickness || actualInnerWallThickness <= 0) {
-        // 从内外径差计算壁厚
-        actualInnerWallThickness = (innerDiameter - innerInnerDiameter) / 2;
+      let threeZoneResult = null;
+      if (isAnnulusCondensation) {
+        try {
+          console.log('[三段计算法] 检测到管外冷凝工况，使用三段计算法');
+          
+          // 确定使用的壁厚
+          let actualInnerWallThickness = innerWallThickness;
+          if (!actualInnerWallThickness || actualInnerWallThickness <= 0) {
+            actualInnerWallThickness = (innerDiameter - innerInnerDiameter) / 2;
+          }
+          const wallThickness = actualIsTwisted ? (twistWallThickness || actualInnerWallThickness) : actualInnerWallThickness;
+          
+          // 准备几何参数
+          const geometry = {
+            outerInnerDiameter: annulusOuterInnerDiameter,
+            tubeOuterDiameter: actualInnerOuterDiameter,
+            tubeInnerDiameter: actualInnerInnerDiameter,
+            wallThickness: wallThickness
+          };
+          
+          // 计算增强因子（基于麻花管参数或使用默认值）
+          let enhancementFactors = {
+            desup: 1.8,
+            cond: 2.5,
+            sub: 1.8
+          };
+          
+          if (actualIsTwisted) {
+            // 麻花管模式：根据头数和节距计算增强因子
+            const enhancement_desup = calculateTwistedTubeEnhancementFactor(
+              twistPitch, actualInnerInnerDiameter, twistLobeCount
+            );
+            const enhancement_sub = enhancement_desup;
+            // 冷凝段增强因子更高（2.0 ~ 3.5）
+            const enhancement_cond = Math.min(3.5, enhancement_desup * 1.4);
+            
+            enhancementFactors = {
+              desup: enhancement_desup,
+              cond: enhancement_cond,
+              sub: enhancement_sub
+            };
+          }
+          
+          // 获取水侧物性（用于三段计算）
+          const waterTavg = (coldTin + coldTout) / 2 + 273.15;
+          let waterProps_condenser = null;
+          try {
+            waterProps_condenser = await getFluidProperties(
+              coldFluid, waterTavg, actualColdPressure * 1000
+            );
+          } catch (e) {
+            console.warn('[三段计算法] 无法获取水侧物性，将使用默认值:', e);
+            // 使用默认值
+          }
+          
+          // 调用三段计算法
+          threeZoneResult = await calculateAnnulusCondenserThreeZone({
+            refrigerant: hotFluid,
+            massFlow: actualHotFlowRate,
+            pressure: actualHotPressure * 1000,
+            tempIn: hotTin + 273.15,
+            tempOut: hotTout + 273.15,
+            geometry: geometry,
+            waterInTemp: coldTin + 273.15,
+            waterFlowRate: actualColdFlowRate,
+            enhancementFactors: enhancementFactors,
+            flowType: flowType,
+            waterProps: waterProps_condenser,
+            tubeMaterial: tubeMaterial,
+            foulingInner: foulingInner,
+            foulingOuter: foulingOuter,
+            passCount: passCount,
+            // 传入麻花管参数
+            isTwisted: actualIsTwisted,
+            twistLobeCount: twistLobeCount,
+            twistToothHeight: twistToothHeight
+          });
+          
+          console.log('[三段计算法] 计算完成，结果:', threeZoneResult);
+          
+          // 使用三段计算的结果计算等效总传热系数
+          // 三段计算返回的是所需的总面积，我们可以基于此计算等效的U值
+          // 但是，由于我们有给定的管长，我们需要计算等效U值
+          // 方法1：使用三段计算的平均U值（基于各段面积加权）
+          // 方法2：使用整体LMTD和所需面积计算
+          const lmtd_overall = calculateLMTD(hotTin, hotTout, coldTin, coldTout, flowType);
+          
+          if (threeZoneResult.total.Area_total > 0 && lmtd_overall > 0) {
+            // 使用三段计算所需的总面积和整体LMTD计算等效U值
+            // U = Q / (A * LMTD)，但这里A是所需面积，不是可用面积
+            // 为了与现有代码兼容，我们计算基于可用面积的等效U值
+            // 但首先使用所需面积计算U值作为参考
+            const U_based_on_required_area = (threeZoneResult.total.Q_total / 1000) / (threeZoneResult.total.Area_total * lmtd_overall);
+            
+            // 计算可用面积
+            const totalArea_available = Math.PI * actualInnerOuterDiameter * length * passCount;
+            
+            // 使用可用面积计算等效U值（用于后续的面积计算）
+            // 注意：如果所需面积大于可用面积，说明给定的管长不够，U值会较小
+            U = (threeZoneResult.total.Q_total / 1000) / (totalArea_available * lmtd_overall); // 转换为kW/m²/K
+          } else {
+            throw new Error('三段计算返回的总面积为0或LMTD无效');
+          }
+          
+          // 创建类似原有格式的heatTransferResult对象
+          // 使用三段计算中冷凝段的传热系数作为代表值
+          hi = threeZoneResult.zones.condensing.h_water;
+          ho = threeZoneResult.zones.condensing.h; // 使用冷凝段的管外传热系数
+          
+          // 存储三段计算的详细信息
+          heatTransferResult = {
+            U: U,
+            hi: hi,
+            ho: ho,
+            threeZoneResult: threeZoneResult,
+            Ri_percentage: null,  // 三段计算中不单独计算这些百分比
+            Ro_percentage: null,
+            Rwall_percentage: null,
+            Rfi_percentage: null,
+            Rfo_percentage: null,
+            method: 'three_zone',
+            // 添加几何参数（从三段计算结果中提取）
+            geometry: threeZoneResult.geometry
+          };
+          
+          // 获取物性用于后续的阻力损失计算（使用平均物性）
+          [hotProps, coldProps] = await Promise.all([
+            getFluidProperties(hotFluid, calcHotTavg, calcHotPressurePa),
+            getFluidProperties(coldFluid, calcColdTavg, calcColdPressurePa)
+          ]);
+          
+        } catch (error) {
+          console.warn('[三段计算法] 计算失败，降级为常规计算:', error);
+          threeZoneResult = null;
+          // 继续执行常规计算逻辑
+        }
       }
       
-      // 麻花管模式下使用twistWallThickness或计算出的壁厚
-      const wallThickness = actualIsTwisted ? (twistWallThickness || actualInnerWallThickness) : actualInnerWallThickness;
-      
-      heatTransferResult = await calculateOverallHeatTransferCoefficient(
-        hotProps,
-        coldProps,
-        actualInnerOuterDiameter, // 内管外径
-        outerDiameter, // 外管外径
-        actualInnerInnerDiameter, // 内管内径（麻花管模式下重新计算）
-        annulusOuterInnerDiameter, // 外管内径（用于环形空间计算，考虑安装间隙）
-        actualHotFlowRate,  // 使用实际流量（可能是计算值）
-        actualColdFlowRate, // 使用实际流量（可能是计算值）
-        length,
-        actualIsTwisted,
-        twistPitch,
-        twistLobeCount,
-        innerTubeCount,
-        wallThickness,
-        foulingInner,  // 管内污垢热阻
-        foulingOuter,  // 管外污垢热阻
-        tubeMaterial,  // 内管材质
-        twistToothHeight  // 齿高
-      );
-      
-      // 处理返回的结果对象
-      if (typeof heatTransferResult === 'object' && heatTransferResult.U) {
-        U = heatTransferResult.U;
-        hi = heatTransferResult.hi;
-        ho = heatTransferResult.ho;
-        Ri_percentage = heatTransferResult.Ri_percentage;
-        Ro_percentage = heatTransferResult.Ro_percentage;
-        Rwall_percentage = heatTransferResult.Rwall_percentage;
-        Rfi_percentage = heatTransferResult.Rfi_percentage;
-        Rfo_percentage = heatTransferResult.Rfo_percentage;
-      } else {
-        // 兼容旧版本（返回单个数值）
-        U = heatTransferResult;
+      // 如果三段计算失败或不符合条件，使用常规计算方法
+      if (!threeZoneResult) {
+        [hotProps, coldProps] = await Promise.all([
+          hotIsTwoPhase && hotQualityAvg !== null
+            ? getFluidPropertiesTwoPhase(calcHotFluid, calcHotTavg, calcHotPressurePa, hotQualityAvg)
+            : getFluidProperties(calcHotFluid, calcHotTavg, calcHotPressurePa),
+          coldIsTwoPhase && coldQualityAvg !== null
+            ? getFluidPropertiesTwoPhase(calcColdFluid, calcColdTavg, calcColdPressurePa, coldQualityAvg)
+            : getFluidProperties(calcColdFluid, calcColdTavg, calcColdPressurePa)
+        ]);
+
+        // 确定使用的壁厚（麻花管使用twistWallThickness，否则使用innerWallThickness）
+        // 如果参数中未提供innerWallThickness，从几何尺寸计算
+        let actualInnerWallThickness = innerWallThickness;
+        if (!actualInnerWallThickness || actualInnerWallThickness <= 0) {
+          // 从内外径差计算壁厚
+          actualInnerWallThickness = (innerDiameter - innerInnerDiameter) / 2;
+        }
+        
+        // 麻花管模式下使用twistWallThickness或计算出的壁厚
+        const wallThickness = actualIsTwisted ? (twistWallThickness || actualInnerWallThickness) : actualInnerWallThickness;
+        
+        heatTransferResult = await calculateOverallHeatTransferCoefficient(
+          hotProps,
+          coldProps,
+          actualInnerOuterDiameter, // 内管外径
+          outerDiameter, // 外管外径
+          actualInnerInnerDiameter, // 内管内径（麻花管模式下重新计算）
+          annulusOuterInnerDiameter, // 外管内径（用于环形空间计算，考虑安装间隙）
+          actualHotFlowRate,  // 使用实际流量（可能是计算值）
+          actualColdFlowRate, // 使用实际流量（可能是计算值）
+          length,
+          actualIsTwisted,
+          twistPitch,
+          twistLobeCount,
+          innerTubeCount,
+          wallThickness,
+          foulingInner,  // 管内污垢热阻
+          foulingOuter,  // 管外污垢热阻
+          tubeMaterial,  // 内管材质
+          twistToothHeight  // 齿高
+        );
+        
+        // 处理返回的结果对象
+        if (typeof heatTransferResult === 'object' && heatTransferResult.U) {
+          U = heatTransferResult.U;
+          hi = heatTransferResult.hi;
+          ho = heatTransferResult.ho;
+          Ri_percentage = heatTransferResult.Ri_percentage;
+          Ro_percentage = heatTransferResult.Ro_percentage;
+          Rwall_percentage = heatTransferResult.Rwall_percentage;
+          Rfi_percentage = heatTransferResult.Rfi_percentage;
+          Rfo_percentage = heatTransferResult.Rfo_percentage;
+        } else {
+          // 兼容旧版本（返回单个数值）
+          U = heatTransferResult;
+        }
       }
     }
 
@@ -1884,7 +2872,9 @@ export async function calculateHeatExchanger(params) {
         hotFluidLocation
       });
       
-      const flowRatePerTube = innerTubeFlowRate / innerTubeCount;
+      // 注意：当每流程有多个外管时，内管是并联的，流量应该被分配到每个内管
+      // 每个内管的流量 = 总流量 / (每外管内管数量 × 每流程外管数量)
+      const flowRatePerTube = innerTubeFlowRate / (innerTubeCount * outerTubeCountPerPass);
       let innerCrossSection, innerVelocity, innerRe, innerDiameter;
       
       // 验证内径是否有效
@@ -1952,6 +2942,8 @@ export async function calculateHeatExchanger(params) {
           viscosity: innerTubeFluidProps.viscosity,
           flowRate: innerTubeFlowRate,
           innerTubeCount,
+          outerTubeCountPerPass,
+          totalInnerTubeCount: innerTubeCount * outerTubeCountPerPass,
           fluid: innerTubeFluid
         });
       } else {
@@ -2006,7 +2998,8 @@ export async function calculateHeatExchanger(params) {
             vaporProps = vaporPropsData.vaporProps;
           }
           
-          const massFlux = (innerTubeFlowRate / innerTubeCount) / innerCrossSection; // kg/m²/s
+          // 注意：当每流程有多个外管时，内管是并联的，质量通量应该基于每个内管的流量
+          const massFlux = (innerTubeFlowRate / (innerTubeCount * outerTubeCountPerPass)) / innerCrossSection; // kg/m²/s
           const singlePassLength = effectiveLength; // 单流程长度
           innerPressureDrop = calculateTwoPhasePressureDrop(
             liquidProps,
@@ -2169,46 +3162,35 @@ export async function calculateHeatExchanger(params) {
       
       if (actualIsTwisted) {
         // 麻花管模式：考虑螺旋通道特性
-        // Do,max（峰顶外接圆）= 实际外管内径（考虑安装间隙）
-        // 外管内径 = 麻花管外径 + 总间隙
-        const doMax = annulusOuterInnerDiameter;
+        // 外管内径 = 外管名义内径 + 1mm安装间隙
+        // 麻花管外径 = 外管名义内径（两者相等）
+        const doMax = actualInnerOuterDiameter; // 麻花管外径（等于外管名义内径）
         // Do,min（谷底内切圆）：使用齿高准确计算
-        // doMin = 麻花管外径 - 2 * 齿高（注意：这里使用麻花管外径，不是外管内径）
-        const innerOuterDiameter = actualInnerOuterDiameter; // 麻花管外径
-        const doMin = innerOuterDiameter - 2 * (twistToothHeight || 0.003); // 默认3mm
+        // doMin = 麻花管外径 - 2 * 齿高
+        const doMin = doMax - 2 * (twistToothHeight || 0.003); // 默认3mm
         
-        // 环形通道流通面积计算（正确方法）
-        // 空隙面积 = 外圆面积 - 梅花形状面积
-        // 外圆直径 = 外管内径（doMax，考虑安装间隙）
-        // 梅花形状面积通过calculateLobeCrossSection计算（使用麻花管外径和doMin）
-        const outerInnerRadius = annulusOuterInnerDiameter / 2;
-        const outerCircleArea = Math.PI * Math.pow(outerInnerRadius, 2); // 外圆面积
+        // 环形通道流通面积计算（使用统一函数）
+        // 外管内径 = 外管名义内径 + 1mm安装间隙
+        // 麻花管外径 = 外管名义内径（两者相等）
+        const annulusGeometry = calculateAnnulusGeometry(
+          annulusOuterInnerDiameter,  // 外管内径（外管名义内径 + 1mm安装间隙）
+          actualInnerOuterDiameter,  // 麻花管外径（等于外管名义内径）
+          twistToothHeight || 0.003,
+          twistLobeCount || 6,
+          twistPitch
+        );
         
-        // 计算梅花截面的几何参数（用于确定梅花形状面积和湿周）
-        const lobeSection = calculateLobeCrossSection(doMax, doMin, twistLobeCount);
-        const plumBlossomArea = lobeSection.area; // 梅花形状面积
-        
-        // 空隙面积 = 外圆面积 - 梅花形状面积
-        const rawAnnulusArea = outerCircleArea - plumBlossomArea;
-        
-        // 考虑螺旋通道的实际有效流通面积
-        // 由于是螺旋形，实际流通面积可能略小于横截面积
-        // 使用一个修正系数（通常0.9-1.0，取决于螺旋节距）
-        // 节距越小（螺旋越紧），有效面积可能略小
-        // 但对于贴合状态的麻花管，修正系数应该接近1.0
-        const spiralChannelFactor = Math.max(0.9, Math.min(1.0, 1 - 0.01 * (0.1 / twistPitch)));
-        annulusArea = rawAnnulusArea * spiralChannelFactor;
+        annulusArea = annulusGeometry.annulusArea;
+        hydraulicDiameter = annulusGeometry.hydraulicDiameter;
         
         console.log('[环形空间压降计算-麻花管] 流通面积计算（考虑安装间隙）:', {
-          innerOuterDiameter: innerOuterDiameter * 1000, // mm (麻花管外径)
+          innerOuterDiameter: actualInnerOuterDiameter * 1000, // mm (麻花管外径)
           annulusOuterInnerDiameter: annulusOuterInnerDiameter * 1000, // mm (外管内径，考虑间隙)
-          doMax: annulusOuterInnerDiameter * 1000, // mm (外管内径)
-          doMin: doMin * 1000, // mm (麻花管谷底直径)
-          outerCircleArea: outerCircleArea * 1000000, // mm² (外圆面积)
-          plumBlossomArea: plumBlossomArea * 1000000, // mm² (梅花形状面积)
-          rawAnnulusArea: rawAnnulusArea * 1000000, // mm² (空隙面积 = 外圆面积 - 梅花形状面积)
-          spiralChannelFactor,
           annulusArea: annulusArea * 1000000, // mm² (最终流通面积)
+          hydraulicDiameter: hydraulicDiameter * 1000, // mm (水力直径)
+          areaEquivalentDiameter: annulusGeometry.areaEquivalentDiameter * 1000, // mm (面积当量直径)
+          rawAnnulusArea: annulusGeometry.rawAnnulusArea * 1000000, // mm² (原始面积)
+          spiralChannelFactor: annulusGeometry.spiralChannelFactor,
           installationGap: installationGap * 1000 // mm (单边间隙)
         });
         
@@ -2218,13 +3200,6 @@ export async function calculateHeatExchanger(params) {
           annulusFrictionFactor = null;
           annulusPressureDrop = null;
         } else {
-          // 计算当量直径和湿周
-          // 外管内壁周长（使用实际外管内径，考虑安装间隙）
-          const outerPerimeter = Math.PI * annulusOuterInnerDiameter;
-          // 麻花管谷底周长（考虑梅花截面）
-          const innerValleyPerimeter = lobeSection.perimeter;
-          // 当量直径：Dh = 4 * A / (P_outer + P_inner_valley)
-          hydraulicDiameter = (4 * annulusArea) / (outerPerimeter + innerValleyPerimeter);
           
           // 计算流速（注意：由于螺旋通道，实际路径长度是螺旋长度，但横截面积不变）
           // 对于冷凝过程，需要使用两相流的混合密度
@@ -2731,12 +3706,15 @@ export async function calculateHeatExchanger(params) {
     });
 
     // 4. 计算实际换热面积（基于几何尺寸）
-    let singleTubeArea;
+    // 实际换热面积：根据换热器的实际几何尺寸（管径、管长、管数等）计算出的传热表面积
+    // 这是换热器实际具备的传热面积，用于与所需面积对比，评估设计是否满足要求
+    let singleTubeArea;  // 单根外管内的传热面积（m²）
     let smoothTubeArea = null;  // 对应的光管面积（用于计算翅化系数）
     let finningRatio = null;    // 翅化系数（麻花管面积/光管面积）
     
     if (actualIsTwisted) {
       // 麻花管使用实际面积估算（考虑梅花截面和螺旋）
+      // 麻花管的传热面积包括：基础圆形面积 + 螺旋路径增加的面积 + 梅花截面增加的面积
       singleTubeArea = calculateTwistedTubeArea(
         actualInnerOuterDiameter, // 麻花管外径
         actualInnerInnerDiameter, // 麻花管内径
@@ -2746,34 +3724,54 @@ export async function calculateHeatExchanger(params) {
       );
       
       // 计算相同几何尺寸下的光管面积（用于翅化系数计算）
-      // 光管面积 = π × 外径 × 管长
+      // 光管面积 = π × 外径 × 管长（不考虑螺旋和梅花截面）
       smoothTubeArea = Math.PI * actualInnerOuterDiameter * length;
       
       // 计算翅化系数：麻花管面积 / 光管面积
+      // 翅化系数反映麻花管相对于光管的传热面积增强倍数
       if (smoothTubeArea > 0) {
         finningRatio = singleTubeArea / smoothTubeArea;
       }
     } else {
       // 直管：基于几何尺寸计算实际面积
       // 单根内管的传热面积 = π × 内管外径 × 管长
+      // 注意：传热面积使用外径，因为传热发生在管外表面
       const singleInnerTubeArea = Math.PI * actualInnerOuterDiameter * length;
       // 单根外管内的总面积 = 单根内管面积 × 内管数量
+      // 当一根外管内有多根内管时，总面积为所有内管面积之和
       singleTubeArea = singleInnerTubeArea * innerTubeCount;
     }
     
     // 总实际换热面积 = 单管面积 × 流程数量 × 每流程外管数量
+    // 说明：
+    // - 单管面积：单根外管内的传热面积
+    // - 流程数量：流体在换热器中的流程数（串联）
+    // - 每流程外管数量：每个流程中并联的外管数量
+    // 总实际面积反映了整个换热器的总传热能力
     const totalArea = singleTubeArea * passCount * outerTubeCountPerPass;
     
     // 基于 Q 和 LMTD 反算一个 U_check（用于 sanity check）
+    // 使用实际面积反算传热系数，用于验证计算的合理性
     let U_check = null;
     if (totalArea > 0 && lmtd > 0) {
       U_check = Q / (totalArea * lmtd);
     }
 
     // 计算所需换热面积
+    // 所需换热面积：根据传热方程计算的理论所需面积
+    // 公式：A_required = Q / (U × LMTD)
+    // 这是完成指定传热任务所需的最小传热面积
     const requiredArea = calculateHeatTransferArea(Q, lmtd, U);
 
     // 计算面积余量（百分比）
+    // 面积余量 = (实际面积 - 所需面积) / 所需面积 × 100%
+    // 意义：
+    // - 正值：实际面积大于所需面积，有安全余量
+    // - 负值：实际面积小于所需面积，可能无法满足传热要求
+    // - 余量状态判断：
+    //   * < 10%：不足（insufficient）- 可能无法满足传热要求
+    //   * 10-25%：合适（adequate）- 有适当的安全余量
+    //   * > 25%：过多（excessive）- 面积过大，可能造成浪费
     let areaMargin = null;
     let areaMarginStatus = 'unknown'; // 'insufficient', 'adequate', 'excessive'
     if (requiredArea > 0 && totalArea >= 0) {
@@ -2793,6 +3791,65 @@ export async function calculateHeatExchanger(params) {
     let enhancementFactor = 1.0;
     if (actualIsTwisted) {
       enhancementFactor = calculateTwistedTubeEnhancementFactor(twistPitch, actualInnerInnerDiameter, twistLobeCount);
+    }
+
+    // 计算几何参数（管内和环隙当量直径及水力直径）
+    let innerEquivalentDiameter, outerEquivalentDiameter;
+    let innerHydraulicDiameter, outerHydraulicDiameter;
+    let outerAreaEquivalentDiameter; // 环隙面积当量直径（基于面积）
+    let innerArea, annulusArea_calc;
+    
+    if (actualIsTwisted) {
+      // 麻花管：计算管内当量直径（使用梅花截面）
+      const innerDoMax = actualInnerInnerDiameter; // 管内径（峰顶外接圆）
+      const innerDoMin = innerDoMax - 2 * twistToothHeight; // 谷底内切圆
+      const innerLobeSection = calculateLobeCrossSection(innerDoMax, innerDoMin, twistLobeCount);
+      innerEquivalentDiameter = innerLobeSection.equivalentDiameter;
+      innerHydraulicDiameter = innerLobeSection.equivalentDiameter; // 管内水力直径 = 当量直径
+      innerArea = innerLobeSection.area;
+      
+      // 计算管外（环隙）几何参数（使用统一函数）
+      // 外管内径 = 外管名义内径 + 1mm安装间隙
+      // 麻花管外径 = 外管名义内径（两者相等）
+      const annulusGeometry = calculateAnnulusGeometry(
+        annulusOuterInnerDiameter,  // 外管内径（外管名义内径 + 1mm安装间隙）
+        actualInnerOuterDiameter,   // 麻花管外径（等于外管名义内径）
+        twistToothHeight,
+        twistLobeCount,
+        twistPitch
+      );
+      
+      annulusArea_calc = annulusGeometry.annulusArea;
+      outerHydraulicDiameter = annulusGeometry.hydraulicDiameter;
+      outerAreaEquivalentDiameter = annulusGeometry.areaEquivalentDiameter;
+      
+      // 环隙当量直径（简化公式，用于向后兼容）
+      outerEquivalentDiameter = calculateAnnulusEquivalentDiameter(
+        annulusOuterInnerDiameter,
+        actualInnerOuterDiameter
+      );
+    } else {
+      // 直管：管内当量直径等于内径
+      innerEquivalentDiameter = actualInnerInnerDiameter;
+      innerHydraulicDiameter = actualInnerInnerDiameter; // 圆管水力直径 = 内径
+      innerArea = Math.PI * Math.pow(actualInnerInnerDiameter / 2, 2);
+      
+      // 计算环隙当量直径（直管）
+      outerEquivalentDiameter = calculateAnnulusEquivalentDiameter(
+        annulusOuterInnerDiameter,
+        actualInnerOuterDiameter
+      );
+      
+      // 直管环隙水力直径 = 当量直径（对于圆形环隙，两者相同）
+      outerHydraulicDiameter = outerEquivalentDiameter;
+      
+      // 计算环隙流通面积
+      annulusArea_calc = Math.PI * (annulusOuterInnerDiameter * annulusOuterInnerDiameter 
+                                     - actualInnerOuterDiameter * actualInnerOuterDiameter) / 4;
+      
+      // 计算环隙面积当量直径（基于面积的当量直径）
+      // 面积当量直径 = 2 × √(A/π) = √(4A/π)
+      outerAreaEquivalentDiameter = Math.sqrt(4 * annulusArea_calc / Math.PI);
     }
 
     const heatTransferRate_kW = Q / 1000; // 转换为 kW
@@ -2829,6 +3886,38 @@ export async function calculateHeatExchanger(params) {
       }
     }
     
+    // 计算三段长度比例（用于温度分布）
+    let hotSegmentRatios = null;
+    let coldSegmentRatios = null;
+    
+    // 优先使用三段计算结果（如果存在）
+    // 从heatTransferResult中获取threeZoneResult（如果使用了三段计算法）
+    const threeZoneResultForDistribution = heatTransferResult?.threeZoneResult || null;
+    if (hotIsCondensation && threeZoneResultForDistribution) {
+      hotSegmentRatios = extractSegmentRatiosFromThreeZone(threeZoneResultForDistribution);
+      if (hotSegmentRatios) {
+        console.log('[温度分布] 使用三段计算法的面积比例:', hotSegmentRatios);
+      }
+    }
+    
+    // 如果三段计算结果不存在，但有冷凝过程，使用基于焓值的简化计算
+    if (hotIsCondensation && !hotSegmentRatios && hotSaturationTemp !== null && actualHotPressure) {
+      try {
+        hotSegmentRatios = await calculateSegmentRatiosFromEnthalpy(
+          hotFluid,
+          actualHotFlowRate,
+          actualHotPressure * 1000,
+          hotTin + 273.15,
+          hotTout + 273.15
+        );
+        if (hotSegmentRatios) {
+          console.log('[温度分布] 使用基于焓值的比例计算:', hotSegmentRatios);
+        }
+      } catch (error) {
+        console.warn('[温度分布] 基于焓值的比例计算失败，将使用固定比例:', error);
+      }
+    }
+    
     const temperatureDistribution = calculateTemperatureDistribution(
       hotTin,
       hotTout,
@@ -2841,7 +3930,9 @@ export async function calculateHeatExchanger(params) {
         hotIsCondensation: hotIsCondensation,
         hotSaturationTemp: hotSaturationTemp,
         coldIsEvaporation: coldIsEvaporation,
-        coldSaturationTemp: coldSaturationTemp
+        coldSaturationTemp: coldSaturationTemp,
+        hotSegmentRatios: hotSegmentRatios,
+        coldSegmentRatios: coldSegmentRatios
       }
     );
 
@@ -2910,6 +4001,22 @@ export async function calculateHeatExchanger(params) {
       annulusFrictionFactor: resultAnnulusFrictionFactor,                // 环形空间摩擦系数
       annulusVelocityIn: annulusVelocityIn,            // 环形空间进口流速 (m/s)
       annulusVelocityOut: annulusVelocityOut,          // 环形空间出口流速 (m/s)
+      // 几何参数
+      geometry: {
+        innerEquivalentDiameter: innerEquivalentDiameter,  // 管内当量直径 (m)
+        outerEquivalentDiameter: outerEquivalentDiameter,  // 环隙当量直径 (m)
+        innerHydraulicDiameter: innerHydraulicDiameter,     // 管内水力直径 (m)
+        outerHydraulicDiameter: outerHydraulicDiameter,     // 环隙水力直径 (m)
+        outerAreaEquivalentDiameter: outerAreaEquivalentDiameter, // 环隙面积当量直径 (m) - 基于面积
+        innerDiameter: actualInnerInnerDiameter,          // 管内径 (m)
+        innerArea: innerArea,                              // 管内流通面积 (m²)
+        outerInnerDiameter: annulusOuterInnerDiameter,     // 外管内径 (m)
+        tubeOuterDiameter: actualInnerOuterDiameter,     // 内管外径 (m)
+        annulusArea: annulusArea_calc,                     // 环隙流通面积 (m²)
+        isTwisted: actualIsTwisted                         // 是否为麻花管
+      },
+      // 三段计算结果（如果使用三段计算法）
+      threeZoneResult: heatTransferResult?.threeZoneResult || null,
       success: true
     };
     
